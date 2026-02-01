@@ -6,7 +6,7 @@
 mod constants;
 mod error;
 mod fetcher;
-mod formatter;
+mod format;
 mod generator;
 mod loader;
 mod models;
@@ -131,9 +131,9 @@ async fn main() -> Result<()> {
     generator::generate_course_pages(&filtered_plans, &repos_dir, &docs_dir, &repos_set).await?;
     println!("Course pages generated successfully");
 
-    // Format MDX files
+    // Format MDX files using AST-based formatter
     println!("Formatting MDX files...");
-    let modified_count = formatter::format_all_mdx_files(&docs_dir)?;
+    let modified_count = format::format_all_mdx_files(&docs_dir)?;
     println!("Formatted {} MDX files", modified_count);
 
     println!("\n✓ Done! All pages generated and formatted.");

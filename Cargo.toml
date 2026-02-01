@@ -22,3 +22,7 @@ reqwest = { version = "0.12", features = ["json"] }
 base64 = "0.22"
 futures = "0.3"
 openssl = { version = "0.10.75", features = ["vendored"] }
+
+# AST-based Markdown processing (optional alternative to regex)
+pulldown-cmark = "0.12"
+pulldown-cmark-to-cmark = "18"
