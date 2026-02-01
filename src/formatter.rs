@@ -34,7 +34,7 @@ fn remove_shield_badges(content: &str) -> String {
     content
         .split('\n')
         .filter(|&line| !line.contains("https://img.shields.io"))
-        .collect::<Vec<&str>>()
+        .collect::<Vec<_>>()
         .join("\n")
 }
 
