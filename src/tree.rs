@@ -14,7 +14,10 @@ fn format_timestamp(unix_ts: i64) -> String {
 /// Generate download URL for a file in the repository
 fn generate_download_url(repo: &str, path: &str) -> String {
     // Only encode parts, not the path separators
-    let parts: Vec<String> = path.split('/').map(|p| urlencoding::encode(p).into_owned()).collect();
+    let parts: Vec<String> = path
+        .split('/')
+        .map(|p| urlencoding::encode(p).into_owned())
+        .collect();
     let encoded_path = parts.join("/");
     format!(
         "https://gh.hoa.moe/github.com/HITSZ-OpenAuto/{}/raw/main/{}",
@@ -52,12 +55,10 @@ pub fn build_file_tree(flat_data: &WorktreeData, repo_name: &str) -> Vec<FileNod
                 .collect();
 
             // Sort: folders first, then by name
-            children.sort_by(|a, b| {
-                match (&a.node_type, &b.node_type) {
-                    (NodeType::Folder, NodeType::File) => std::cmp::Ordering::Less,
-                    (NodeType::File, NodeType::Folder) => std::cmp::Ordering::Greater,
-                    _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-                }
+            children.sort_by(|a, b| match (&a.node_type, &b.node_type) {
+                (NodeType::Folder, NodeType::File) => std::cmp::Ordering::Less,
+                (NodeType::File, NodeType::Folder) => std::cmp::Ordering::Greater,
+                _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
             });
 
             FileNode {
@@ -109,12 +110,10 @@ pub fn build_file_tree(flat_data: &WorktreeData, repo_name: &str) -> Vec<FileNod
         .map(|(name, builder)| builder.to_node(name))
         .collect();
 
-    result.sort_by(|a, b| {
-        match (&a.node_type, &b.node_type) {
-            (NodeType::Folder, NodeType::File) => std::cmp::Ordering::Less,
-            (NodeType::File, NodeType::Folder) => std::cmp::Ordering::Greater,
-            _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-        }
+    result.sort_by(|a, b| match (&a.node_type, &b.node_type) {
+        (NodeType::Folder, NodeType::File) => std::cmp::Ordering::Less,
+        (NodeType::File, NodeType::Folder) => std::cmp::Ordering::Greater,
+        _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
     });
 
     result

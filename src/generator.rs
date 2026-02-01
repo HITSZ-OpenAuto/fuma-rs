@@ -15,7 +15,11 @@ use std::path::Path;
 /// Build YAML frontmatter for a course page using serde_yaml
 fn build_frontmatter(title: &str, course: &Course) -> String {
     let credit = course.credit.map(|c| c as u32).unwrap_or(0);
-    let assessment_method = course.assessment_method.as_deref().unwrap_or("").to_string();
+    let assessment_method = course
+        .assessment_method
+        .as_deref()
+        .unwrap_or("")
+        .to_string();
     let course_nature = course.course_nature.as_deref().unwrap_or("").to_string();
 
     let hour_distribution = if let Some(ref h) = course.hours {
@@ -43,11 +47,14 @@ fn build_frontmatter(title: &str, course: &Course) -> String {
             .iter()
             .filter_map(|detail| {
                 let percent = if let Some(ref percent_str) = detail.percent {
-                    percent_str.trim_end_matches('%').parse::<u32>().unwrap_or(0)
+                    percent_str
+                        .trim_end_matches('%')
+                        .parse::<u32>()
+                        .unwrap_or(0)
                 } else {
                     0
                 };
-                
+
                 if percent > 0 {
                     Some(GradingItem {
                         name: detail.name.clone(),
@@ -174,7 +181,10 @@ pub async fn generate_course_pages(
                 "{}\n\n<CourseInfo />\n\n{}{}",
                 frontmatter, content, filetree_content
             );
-            fs::write(target_dir.join(format!("{}.mdx", course.code)), page_content)?;
+            fs::write(
+                target_dir.join(format!("{}.mdx", course.code)),
+                page_content,
+            )?;
         }
 
         // Generate semester index pages

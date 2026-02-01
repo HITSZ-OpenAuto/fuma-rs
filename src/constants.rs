@@ -34,21 +34,27 @@ pub const EXCLUDED_PREFIXES: &[&str] = &[".github/"];
 /// Check if a file path should be included in the file tree
 pub fn should_include_file(path: &str) -> bool {
     let filename = path.split('/').last().unwrap_or("");
-    
+
     // Check exact matches
     if EXCLUDED_PATTERNS.contains(&filename) {
         return false;
     }
-    
+
     // Check extensions
-    if EXCLUDED_EXTENSIONS.iter().any(|ext| filename.ends_with(ext)) {
+    if EXCLUDED_EXTENSIONS
+        .iter()
+        .any(|ext| filename.ends_with(ext))
+    {
         return false;
     }
-    
+
     // Check prefixes
-    if EXCLUDED_PREFIXES.iter().any(|prefix| path.starts_with(prefix)) {
+    if EXCLUDED_PREFIXES
+        .iter()
+        .any(|prefix| path.starts_with(prefix))
+    {
         return false;
     }
-    
+
     true
 }

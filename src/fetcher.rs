@@ -27,13 +27,17 @@ impl GitHubFetcher {
     pub fn new(token: String) -> Result<Self> {
         let mut headers = HeaderMap::new();
         headers.insert(USER_AGENT, HeaderValue::from_static("fuma-rs"));
-        headers.insert(ACCEPT, HeaderValue::from_static("application/vnd.github+json"));
-        
+        headers.insert(
+            ACCEPT,
+            HeaderValue::from_static("application/vnd.github+json"),
+        );
+
         let auth_value = format!("Bearer {}", token);
         headers.insert(
             AUTHORIZATION,
-            HeaderValue::from_str(&auth_value)
-                .map_err(|e| FumaError::Io(std::io::Error::new(std::io::ErrorKind::InvalidInput, e)))?,
+            HeaderValue::from_str(&auth_value).map_err(|e| {
+                FumaError::Io(std::io::Error::new(std::io::ErrorKind::InvalidInput, e))
+            })?,
         );
 
         let client = reqwest::Client::builder()
@@ -84,8 +88,10 @@ impl GitHubFetcher {
         if content.encoding == "base64" {
             let decoded = BASE64_STANDARD
                 .decode(content.content.replace('\n', ""))
-                .map_err(|e| FumaError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))?;
-            
+                .map_err(|e| {
+                    FumaError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+                })?;
+
             String::from_utf8(decoded)
                 .map_err(|e| FumaError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))
         } else {
@@ -105,12 +111,7 @@ impl GitHubFetcher {
     }
 
     /// Fetch repository data and save to local files
-    pub async fn fetch_repo_data(
-        &self,
-        org: &str,
-        repo: &str,
-        repos_dir: &Path,
-    ) -> Result<()> {
+    pub async fn fetch_repo_data(&self, org: &str, repo: &str, repos_dir: &Path) -> Result<()> {
         let mdx_path = repos_dir.join(format!("{}.mdx", repo));
         let json_path = repos_dir.join(format!("{}.json", repo));
 
@@ -150,8 +151,8 @@ pub async fn fetch_all_repos(
     repos_dir: &Path,
     concurrency: usize,
 ) -> Result<()> {
-    use tokio::sync::Semaphore;
     use std::sync::Arc;
+    use tokio::sync::Semaphore;
 
     println!("Fetching {} repositories from GitHub...", repos_list.len());
 
@@ -215,7 +216,7 @@ pub fn resolve_github_token() -> Option<String> {
     // 1. PERSONAL_ACCESS_TOKEN (explicit)
     // 2. GITHUB_TOKEN (common in GitHub Actions)
     // 3. gh CLI token (local development)
-    
+
     if let Ok(token) = std::env::var("PERSONAL_ACCESS_TOKEN") {
         return Some(token);
     }

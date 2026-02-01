@@ -43,11 +43,13 @@ async fn main() -> Result<()> {
     // Fetch repos from GitHub if --fetch flag is provided
     if should_fetch {
         println!("\n=== Fetching repos from GitHub ===");
-        
+
         let token = fetcher::resolve_github_token();
         if token.is_none() {
             eprintln!("Error: No GitHub token found!");
-            eprintln!("Please set PERSONAL_ACCESS_TOKEN, GITHUB_TOKEN, or login via `gh auth login`");
+            eprintln!(
+                "Please set PERSONAL_ACCESS_TOKEN, GITHUB_TOKEN, or login via `gh auth login`"
+            );
             std::process::exit(1);
         }
 
