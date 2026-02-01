@@ -1,0 +1,100 @@
+name: Build and Deploy with Fuma RS
+
+permissions:
+  contents: write
+
+env:
+  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+  NEXT_TELEMETRY_DISABLED: 1
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
+
+      # Fetch repository list
+      - name: Fetch repositories in the organization
+        run: curl -o repos_list.txt https://raw.githubusercontent.com/HITSZ-OpenAuto/repos-management/refs/heads/main/repos_list.txt
+
+      # Python setup for data fetching (this part remains from original workflow)
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+          working-directory: scripts
+          activate-environment: true
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Install the project
+        run: uv sync --locked --directory scripts/
+
+      # Fetch course data from GitHub (Python part - only data fetching)
+      - name: Fetch course data
+        env:
+          PERSONAL_ACCESS_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+        run: |
+          # This would be a modified version of main.py that only downloads repos
+          # Or you could keep using the original if you want both Python and Rust approaches
+          uv run scripts/main.py
+
+      # Rust setup and build
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: fuma_rs
+
+      - name: Build Fuma RS
+        run: |
+          cd fuma_rs
+          cargo build --release
+
+      # Generate course pages using Fuma RS
+      - name: Generate course pages with Fuma RS
+        run: ./fuma_rs/target/release/fuma
+
+      # Deploy to Vercel
+      - uses: pnpm/action-setup@v4
+        name: Install pnpm
+        with:
+          cache: true
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Install Vercel CLI
+        run: pnpm i -g vercel@latest
+
+      - name: Pull Vercel Environment Information
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Build Project Artifacts
+        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+      
+      - name: Deploy Project Artifacts to Vercel
+        run: vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }} --archive=tgz
+
+      # Commit generated pages to production branch
+      - name: Commit and push changes to production branch
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Actions"
+          git add --force content/
+          git commit -m "docs: update course pages [Fuma RS]" || echo "No changes to commit"          
+          git push origin HEAD:production --force
