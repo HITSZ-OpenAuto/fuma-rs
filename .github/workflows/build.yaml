@@ -48,7 +48,7 @@ jobs:
         run: |
           pwd
           ls -al
-          strip "/home/runner/work/fuma-rs/fuma-rs/target/${{ matrix.target }}/release/hoa-backend"
+          strip "/home/runner/work/hoa-backend/hoa-backend/target/${{ matrix.target }}/release/hoa-backend"
 
       - name: Build archive
         shell: bash
