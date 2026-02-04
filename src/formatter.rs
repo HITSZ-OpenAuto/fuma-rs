@@ -13,7 +13,7 @@ pub fn format_mdx_file(content: &str) -> String {
     result = fix_self_closing_tags(&result);
     result = fix_malformed_html(&result);
     result = convert_style_to_jsx(&result);
-    result = escape_curly_braces_in_math(&result);
+    // result = escape_curly_braces_in_math(&result);
     result = convert_hugo_details_to_accordion(&result);
 
     // Clean up multiple consecutive blank lines
@@ -119,63 +119,6 @@ fn convert_style_to_jsx(content: &str) -> String {
     .to_string()
 }
 
-/// Escapes curly braces `{}` within LaTeX math blocks (`$...$` and `$$...$$`).
-/// This is essential for MDX, where `{}` is otherwise interpreted as JSX.
-fn escape_curly_braces_in_math(content: &str) -> String {
-    let mut result = String::with_capacity(content.len());
-    let chars: Vec<char> = content.chars().collect();
-    let mut i = 0;
-
-    while i < chars.len() {
-        // Detect Math Delimiter
-        if chars[i] == '$' {
-            let is_display = i + 1 < chars.len() && chars[i + 1] == '$';
-            let del_len = if is_display { 2 } else { 1 };
-
-            // Find closing delimiter in char array
-            let mut end_idx = None;
-            for j in (i + del_len)..(chars.len() - del_len + 1) {
-                if chars[j] == '$' && (!is_display || j + 1 < chars.len() && chars[j + 1] == '$') {
-                    end_idx = Some(j);
-                    break;
-                }
-            }
-
-            if let Some(end_pos) = end_idx {
-                // 1. Add opening delimiter
-                for _ in 0..del_len {
-                    result.push('$');
-                }
-
-                // 2. Process math content with escapes
-                for idx in (i + del_len)..end_pos {
-                    let c = chars[idx];
-                    if (c == '{' || c == '}') && !is_escaped_at_char_idx(&chars, idx) {
-                        result.push('\\');
-                    }
-                    result.push(c);
-                }
-
-                // 3. Add closing delimiter
-                for _ in 0..del_len {
-                    result.push('$');
-                }
-
-                i = end_pos + del_len;
-                continue;
-            }
-        }
-
-        result.push(chars[i]);
-        i += 1;
-    }
-    result
-}
-
-/// Helper to check if a character at a specific char index is already escaped by a backslash
-fn is_escaped_at_char_idx(chars: &[char], idx: usize) -> bool {
-    idx > 0 && chars[idx - 1] == '\\'
-}
 
 /// Convert Hugo details shortcode to Fumadocs Accordion components
 fn convert_hugo_details_to_accordion(content: &str) -> String {
@@ -404,82 +347,6 @@ mod tests {
     }
 
     #[test]
-    fn test_escape_math_braces() {
-        let input = "This is $x = {1, 2, 3}$ math";
-        let output = escape_curly_braces_in_math(input);
-        assert!(output.contains(r"\{"));
-        assert!(output.contains(r"\}"));
-    }
-
-    #[test]
-    fn test_escape_math_braces_display_mode() {
-        let input = "Display $$f(x) = {x^2}$$ formula";
-        let output = escape_curly_braces_in_math(input);
-        assert_eq!(output, r"Display $$f(x) = \{x^2\}$$ formula");
-    }
-
-    #[test]
-    fn test_escape_math_braces_already_escaped() {
-        let input = r"Text $x = \{1, 2\}$ done";
-        let output = escape_curly_braces_in_math(input);
-        // Should not double-escape
-        assert_eq!(output, r"Text $x = \{1, 2\}$ done");
-    }
-
-    #[test]
-    fn test_escape_math_braces_mixed() {
-        let input = r"Inline $a = {b}$ and display $$c = {d}$$ text";
-        let output = escape_curly_braces_in_math(input);
-        assert!(output.contains(r"$a = \{b\}$"));
-        assert!(output.contains(r"$$c = \{d\}$$"));
-    }
-
-    #[test]
-    fn test_escape_math_braces_no_math() {
-        let input = "Regular text with {braces} but no math";
-        let output = escape_curly_braces_in_math(input);
-        assert_eq!(output, input);
-    }
-
-    #[test]
-    fn test_escape_math_braces_utf8_chinese() {
-        let input = "中文文本 $x = {1, 2}$ 更多中文";
-        let output = escape_curly_braces_in_math(input);
-        assert_eq!(output, r"中文文本 $x = \{1, 2\}$ 更多中文");
-    }
-
-    #[test]
-    fn test_escape_math_braces_utf8_emoji() {
-        let input = "Test 😀 $f(x) = {x}$ 🎉 end";
-        let output = escape_curly_braces_in_math(input);
-        assert_eq!(output, r"Test 😀 $f(x) = \{x\}$ 🎉 end");
-    }
-
-    #[test]
-    fn test_escape_math_braces_utf8_mixed() {
-        let input = "日本語 $$集合 = {a, b, c}$$ Русский";
-        let output = escape_curly_braces_in_math(input);
-        assert_eq!(output, r"日本語 $$集合 = \{a, b, c\}$$ Русский");
-    }
-
-    #[test]
-    fn test_escape_math_braces_utf8_already_escaped() {
-        let input = r"한글 $x = \{1\}$ текст";
-        let output = escape_curly_braces_in_math(input);
-        assert_eq!(output, r"한글 $x = \{1\}$ текст");
-    }
-
-    #[test]
-    fn test_escape_math_braces_utf8_complex() {
-        let input = "Ελληνικά $α = {β}$ 中文 $$γ = {δ}$$ العربية";
-        let output = escape_curly_braces_in_math(input);
-        assert!(output.contains(r"$α = \{β\}$"));
-        assert!(output.contains(r"$$γ = \{δ\}$$"));
-        assert!(output.contains("Ελληνικά"));
-        assert!(output.contains("العربية"));
-    }
-
-    #[test]
     fn test_convert_hugo_details_to_accordion() {
         let input = r#"{{% details title="Test" %}}Content here{{% /details %}}"#;
         let output = convert_hugo_details_to_accordion(input);
@@ -542,18 +409,5 @@ Math: $x = {1}$
         assert!(output.contains("textAlign"));
         assert!(output.contains(r"\{"));
         assert!(output.contains("<Accordion"));
-    }
-
-    #[test]
-    fn test_is_escaped() {
-        let chars1: Vec<char> = "test".chars().collect();
-        assert!(!is_escaped_at_char_idx(&chars1, 0));
-        assert!(!is_escaped_at_char_idx(&chars1, 2));
-
-        let chars2: Vec<char> = r"\{".chars().collect();
-        assert!(is_escaped_at_char_idx(&chars2, 1));
-
-        let chars3: Vec<char> = "{test}".chars().collect();
-        assert!(!is_escaped_at_char_idx(&chars3, 0));
     }
 }
