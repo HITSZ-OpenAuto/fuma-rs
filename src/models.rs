@@ -154,3 +154,183 @@ impl Frontmatter {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_frontmatter_to_yaml_basic() {
+        let frontmatter = Frontmatter {
+            title: "Test Course".to_string(),
+            description: "A test description".to_string(),
+            course: CourseMetadata {
+                credit: 3,
+                assessment_method: "Exam".to_string(),
+                course_nature: "Required".to_string(),
+                hour_distribution: HourDistributionMeta {
+                    theory: 48,
+                    lab: 0,
+                    practice: 0,
+                    exercise: 0,
+                    computer: 0,
+                    tutoring: 0,
+                },
+                grading_scheme: vec![
+                    GradingItem {
+                        name: "Final Exam".to_string(),
+                        percent: 70,
+                    },
+                    GradingItem {
+                        name: "Homework".to_string(),
+                        percent: 30,
+                    },
+                ],
+            },
+        };
+
+        let yaml = frontmatter.to_yaml();
+
+        assert!(yaml.starts_with("---\n"));
+        assert!(yaml.ends_with("---"));
+        assert!(yaml.contains("title: Test Course"));
+        assert!(yaml.contains("description: A test description"));
+        assert!(yaml.contains("credit: 3"));
+        assert!(yaml.contains("assessmentMethod: Exam"));
+        assert!(yaml.contains("courseNature: Required"));
+    }
+
+    #[test]
+    fn test_frontmatter_to_yaml_with_grading_scheme() {
+        let frontmatter = Frontmatter {
+            title: "Advanced Math".to_string(),
+            description: "".to_string(),
+            course: CourseMetadata {
+                credit: 4,
+                assessment_method: "Mixed".to_string(),
+                course_nature: "Elective".to_string(),
+                hour_distribution: HourDistributionMeta {
+                    theory: 32,
+                    lab: 16,
+                    practice: 0,
+                    exercise: 0,
+                    computer: 0,
+                    tutoring: 0,
+                },
+                grading_scheme: vec![
+                    GradingItem {
+                        name: "Midterm".to_string(),
+                        percent: 30,
+                    },
+                    GradingItem {
+                        name: "Final".to_string(),
+                        percent: 50,
+                    },
+                    GradingItem {
+                        name: "Lab".to_string(),
+                        percent: 20,
+                    },
+                ],
+            },
+        };
+
+        let yaml = frontmatter.to_yaml();
+
+        assert!(yaml.contains("gradingScheme:"));
+        assert!(yaml.contains("name: Midterm"));
+        assert!(yaml.contains("percent: 30"));
+        assert!(yaml.contains("name: Final"));
+        assert!(yaml.contains("percent: 50"));
+        assert!(yaml.contains("name: Lab"));
+        assert!(yaml.contains("percent: 20"));
+    }
+
+    #[test]
+    fn test_frontmatter_to_yaml_empty_grading_scheme() {
+        let frontmatter = Frontmatter {
+            title: "Simple Course".to_string(),
+            description: "No grading details".to_string(),
+            course: CourseMetadata {
+                credit: 2,
+                assessment_method: "Pass/Fail".to_string(),
+                course_nature: "Optional".to_string(),
+                hour_distribution: HourDistributionMeta {
+                    theory: 24,
+                    lab: 0,
+                    practice: 0,
+                    exercise: 0,
+                    computer: 0,
+                    tutoring: 0,
+                },
+                grading_scheme: vec![],
+            },
+        };
+
+        let yaml = frontmatter.to_yaml();
+
+        assert!(yaml.contains("title: Simple Course"));
+        assert!(yaml.contains("gradingScheme: []"));
+    }
+
+    #[test]
+    fn test_hour_distribution_meta_all_fields() {
+        let frontmatter = Frontmatter {
+            title: "Complex Course".to_string(),
+            description: "".to_string(),
+            course: CourseMetadata {
+                credit: 5,
+                assessment_method: "Comprehensive".to_string(),
+                course_nature: "Core".to_string(),
+                hour_distribution: HourDistributionMeta {
+                    theory: 32,
+                    lab: 16,
+                    practice: 8,
+                    exercise: 4,
+                    computer: 8,
+                    tutoring: 2,
+                },
+                grading_scheme: vec![],
+            },
+        };
+
+        let yaml = frontmatter.to_yaml();
+
+        assert!(yaml.contains("theory: 32"));
+        assert!(yaml.contains("lab: 16"));
+        assert!(yaml.contains("practice: 8"));
+        assert!(yaml.contains("exercise: 4"));
+        assert!(yaml.contains("computer: 8"));
+        assert!(yaml.contains("tutoring: 2"));
+    }
+
+    #[test]
+    fn test_grading_item_serialization() {
+        let item = GradingItem {
+            name: "Quiz".to_string(),
+            percent: 15,
+        };
+
+        let yaml = serde_yaml::to_string(&item).unwrap();
+
+        assert!(yaml.contains("name: Quiz"));
+        assert!(yaml.contains("percent: 15"));
+    }
+
+    #[test]
+    fn test_hour_distribution_meta_zero_values() {
+        let hours = HourDistributionMeta {
+            theory: 0,
+            lab: 0,
+            practice: 0,
+            exercise: 0,
+            computer: 0,
+            tutoring: 0,
+        };
+
+        let yaml = serde_yaml::to_string(&hours).unwrap();
+
+        // All fields should be present even if zero
+        assert!(yaml.contains("theory: 0"));
+        assert!(yaml.contains("lab: 0"));
+    }
+}

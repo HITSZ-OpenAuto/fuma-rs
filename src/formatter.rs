@@ -303,10 +303,54 @@ mod tests {
     }
 
     #[test]
+    fn test_remove_html_comments_multiline() {
+        let input = "Text <!-- \nmultiline\ncomment\n--> more text";
+        let output = remove_html_comments(input);
+        assert_eq!(output, "Text  more text");
+    }
+
+    #[test]
+    fn test_remove_html_comments_multiple() {
+        let input = "<!-- first -->text<!-- second -->more";
+        let output = remove_html_comments(input);
+        assert_eq!(output, "textmore");
+    }
+
+    #[test]
+    fn test_remove_shield_badges() {
+        let input = "# Title\n![badge](https://img.shields.io/badge/test)\nNormal content";
+        let output = remove_shield_badges(input);
+        assert!(!output.contains("shields.io"));
+        assert!(output.contains("Normal content"));
+    }
+
+    #[test]
     fn test_fix_self_closing_tags() {
         let input = "Line 1<br>Line 2<hr>Line 3";
         let output = fix_self_closing_tags(input);
         assert_eq!(output, "Line 1<br />Line 2<hr />Line 3");
+    }
+
+    #[test]
+    fn test_fix_self_closing_tags_with_spaces() {
+        let input = "Text<br >more<hr  >end";
+        let output = fix_self_closing_tags(input);
+        assert_eq!(output, "Text<br />more<hr />end");
+    }
+
+    #[test]
+    fn test_fix_malformed_html() {
+        let input = "<table><tr></table>";
+        let output = fix_malformed_html(input);
+        assert_eq!(output, "<table></table>");
+    }
+
+    #[test]
+    fn test_fix_malformed_html_empty_tr() {
+        let input = "<table><tr></tr><tr><td>data</td></tr></table>";
+        let output = fix_malformed_html(input);
+        assert!(!output.contains("<tr></tr>"));
+        assert!(output.contains("<td>data</td>"));
     }
 
     #[test]
@@ -320,6 +364,16 @@ mod tests {
     }
 
     #[test]
+    fn test_css_to_camel_case_edge_cases() {
+        assert_eq!(css_property_to_camel_case(""), "");
+        assert_eq!(css_property_to_camel_case("font-size"), "fontSize");
+        assert_eq!(
+            css_property_to_camel_case("border-top-left-radius"),
+            "borderTopLeftRadius"
+        );
+    }
+
+    #[test]
     fn test_convert_style_to_jsx() {
         let input = r#"<div style="text-align:center;color:red;"></div>"#;
         let output = convert_style_to_jsx(input);
@@ -328,10 +382,130 @@ mod tests {
     }
 
     #[test]
+    fn test_convert_style_to_jsx_empty() {
+        let input = r#"<div style=""></div>"#;
+        let output = convert_style_to_jsx(input);
+        assert!(!output.contains("style="));
+    }
+
+    #[test]
+    fn test_convert_style_to_jsx_complex() {
+        let input =
+            r#"<div style="margin-top: 10px; padding-left: 20px; background-color: #fff;"></div>"#;
+        let output = convert_style_to_jsx(input);
+        assert!(output.contains("marginTop"));
+        assert!(output.contains("paddingLeft"));
+        assert!(output.contains("backgroundColor"));
+    }
+
+    #[test]
     fn test_escape_math_braces() {
         let input = "This is $x = {1, 2, 3}$ math";
         let output = escape_curly_braces_in_math(input);
         assert!(output.contains(r"\{"));
         assert!(output.contains(r"\}"));
+    }
+
+    #[test]
+    fn test_escape_math_braces_display_mode() {
+        let input = "Display $$f(x) = {x^2}$$ formula";
+        let output = escape_curly_braces_in_math(input);
+        assert_eq!(output, r"Display $$f(x) = \{x^2\}$$ formula");
+    }
+
+    #[test]
+    fn test_escape_math_braces_already_escaped() {
+        let input = r"Text $x = \{1, 2\}$ done";
+        let output = escape_curly_braces_in_math(input);
+        // Should not double-escape
+        assert_eq!(output, r"Text $x = \{1, 2\}$ done");
+    }
+
+    #[test]
+    fn test_escape_math_braces_mixed() {
+        let input = r"Inline $a = {b}$ and display $$c = {d}$$ text";
+        let output = escape_curly_braces_in_math(input);
+        assert!(output.contains(r"$a = \{b\}$"));
+        assert!(output.contains(r"$$c = \{d\}$$"));
+    }
+
+    #[test]
+    fn test_escape_math_braces_no_math() {
+        let input = "Regular text with {braces} but no math";
+        let output = escape_curly_braces_in_math(input);
+        assert_eq!(output, input);
+    }
+
+    #[test]
+    fn test_convert_hugo_details_to_accordion() {
+        let input = r#"{{% details title="Test" %}}Content here{{% /details %}}"#;
+        let output = convert_hugo_details_to_accordion(input);
+        assert!(output.contains("<Accordion title=\"Test\">"));
+        assert!(output.contains("</Accordion>"));
+        assert!(output.contains("Content here"));
+    }
+
+    #[test]
+    fn test_convert_hugo_details_multiline() {
+        let input = r#"{{% details title="Question" %}}
+Line 1
+Line 2
+{{% /details %}}"#;
+        let output = convert_hugo_details_to_accordion(input);
+        assert!(output.contains("<Accordion title=\"Question\">"));
+        assert!(output.contains("Line 1"));
+        assert!(output.contains("Line 2"));
+    }
+
+    #[test]
+    fn test_wrap_accordions_in_container() {
+        let input = r#"<Accordion title="Q1">
+A1
+</Accordion>
+<Accordion title="Q2">
+A2
+</Accordion>"#;
+        let output = wrap_accordions_in_container(input);
+        assert!(output.contains("<Accordions>"));
+        assert!(output.contains("</Accordions>"));
+    }
+
+    #[test]
+    fn test_wrap_accordions_single() {
+        let input = r#"<Accordion title="Q1">
+A1
+</Accordion>"#;
+        let output = wrap_accordions_in_container(input);
+        assert!(output.contains("<Accordions>"));
+        assert!(output.contains("</Accordions>"));
+    }
+
+    #[test]
+    fn test_format_mdx_file_integration() {
+        let input = r#"<!-- comment -->
+# Title
+![badge](https://img.shields.io/test)
+<br>
+<div style="text-align:center;">Content</div>
+Math: $x = {1}$
+{{% details title="Test" %}}Answer{{% /details %}}"#;
+
+        let output = format_mdx_file(input);
+
+        // Check all transformations applied
+        assert!(!output.contains("<!--"));
+        assert!(!output.contains("shields.io"));
+        assert!(output.contains("<br />"));
+        assert!(output.contains("textAlign"));
+        assert!(output.contains(r"\{"));
+        assert!(output.contains("<Accordion"));
+    }
+
+    #[test]
+    fn test_is_escaped() {
+        assert!(!is_escaped("test", 0));
+        assert!(!is_escaped("test", 2));
+        assert!(is_escaped(r"\{", 1));
+        assert!(!is_escaped("{test}", 0));
     }
 }

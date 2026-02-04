@@ -171,3 +171,254 @@ pub fn load_repos_list(repo_root: &Path) -> Result<HashSet<String>> {
         .filter(|s| !s.is_empty())
         .collect())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    fn create_test_grade_detail(name: &str, percent: &str) -> GradeDetail {
+        GradeDetail {
+            name: name.to_string(),
+            percent: Some(percent.to_string()),
+        }
+    }
+
+    #[test]
+    fn test_select_grade_details_year_major_code() {
+        let mut grades_summary = HashMap::new();
+        let mut course_entry = HashMap::new();
+
+        course_entry.insert(
+            "2023_CS".to_string(),
+            vec![create_test_grade_detail("Exam", "70%")],
+        );
+        course_entry.insert(
+            "2023_default".to_string(),
+            vec![create_test_grade_detail("Exam", "60%")],
+        );
+        course_entry.insert(
+            "default".to_string(),
+            vec![create_test_grade_detail("Exam", "50%")],
+        );
+
+        grades_summary.insert("MATH101".to_string(), course_entry);
+
+        let result =
+            select_grade_details(&grades_summary, "MATH101", "2023", "CS", "Computer Science");
+
+        assert!(result.is_some());
+        let details = result.unwrap();
+        assert_eq!(details.len(), 1);
+        assert_eq!(details[0].name, "Exam");
+        assert_eq!(details[0].percent, Some("70%".to_string()));
+    }
+
+    #[test]
+    fn test_select_grade_details_year_major_name() {
+        let mut grades_summary = HashMap::new();
+        let mut course_entry = HashMap::new();
+
+        course_entry.insert(
+            "2023_Computer Science".to_string(),
+            vec![create_test_grade_detail("Project", "80%")],
+        );
+        course_entry.insert(
+            "default".to_string(),
+            vec![create_test_grade_detail("Exam", "50%")],
+        );
+
+        grades_summary.insert("PROG202".to_string(), course_entry);
+
+        let result =
+            select_grade_details(&grades_summary, "PROG202", "2023", "CS", "Computer Science");
+
+        assert!(result.is_some());
+        let details = result.unwrap();
+        assert_eq!(details.len(), 1);
+        assert_eq!(details[0].name, "Project");
+        assert_eq!(details[0].percent, Some("80%".to_string()));
+    }
+
+    #[test]
+    fn test_select_grade_details_year_default() {
+        let mut grades_summary = HashMap::new();
+        let mut course_entry = HashMap::new();
+
+        course_entry.insert(
+            "2023_default".to_string(),
+            vec![create_test_grade_detail("Midterm", "40%")],
+        );
+        course_entry.insert(
+            "default".to_string(),
+            vec![create_test_grade_detail("Exam", "50%")],
+        );
+
+        grades_summary.insert("PHYS101".to_string(), course_entry);
+
+        let result = select_grade_details(
+            &grades_summary,
+            "PHYS101",
+            "2023",
+            "EE",
+            "Electrical Engineering",
+        );
+
+        assert!(result.is_some());
+        let details = result.unwrap();
+        assert_eq!(details.len(), 1);
+        assert_eq!(details[0].name, "Midterm");
+    }
+
+    #[test]
+    fn test_select_grade_details_global_default() {
+        let mut grades_summary = HashMap::new();
+        let mut course_entry = HashMap::new();
+
+        course_entry.insert(
+            "default".to_string(),
+            vec![create_test_grade_detail("Final", "100%")],
+        );
+
+        grades_summary.insert("CHEM101".to_string(), course_entry);
+
+        let result = select_grade_details(
+            &grades_summary,
+            "CHEM101",
+            "2024",
+            "ME",
+            "Mechanical Engineering",
+        );
+
+        assert!(result.is_some());
+        let details = result.unwrap();
+        assert_eq!(details.len(), 1);
+        assert_eq!(details[0].name, "Final");
+    }
+
+    #[test]
+    fn test_select_grade_details_not_found() {
+        let grades_summary = HashMap::new();
+
+        let result =
+            select_grade_details(&grades_summary, "UNKNOWN", "2023", "CS", "Computer Science");
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_select_grade_details_empty_details() {
+        let mut grades_summary = HashMap::new();
+        let mut course_entry = HashMap::new();
+
+        course_entry.insert("2023_CS".to_string(), vec![]);
+        course_entry.insert(
+            "default".to_string(),
+            vec![create_test_grade_detail("Backup", "100%")],
+        );
+
+        grades_summary.insert("TEST101".to_string(), course_entry);
+
+        let result =
+            select_grade_details(&grades_summary, "TEST101", "2023", "CS", "Computer Science");
+
+        // Should fallback to default since 2023_CS is empty
+        assert!(result.is_some());
+        let details = result.unwrap();
+        assert_eq!(details[0].name, "Backup");
+    }
+
+    #[test]
+    fn test_load_repos_list_nonexistent() {
+        use std::env;
+        let temp_dir = env::temp_dir().join("test_repos_list_nonexistent");
+        let _ = std::fs::create_dir_all(&temp_dir);
+
+        let result = load_repos_list(&temp_dir).unwrap();
+        assert!(result.is_empty());
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_load_repos_list_with_content() {
+        use std::env;
+        let temp_dir = env::temp_dir().join("test_repos_list_with_content");
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let repos_file = temp_dir.join("repos_list.txt");
+
+        let mut file = fs::File::create(&repos_file).unwrap();
+        writeln!(file, "MATH101").unwrap();
+        writeln!(file, "PHYS201").unwrap();
+        writeln!(file, "  CHEM301  ").unwrap(); // with whitespace
+        writeln!(file, "").unwrap(); // empty line
+        writeln!(file, "CS401").unwrap();
+
+        let result = load_repos_list(&temp_dir).unwrap();
+
+        assert_eq!(result.len(), 4);
+        assert!(result.contains("MATH101"));
+        assert!(result.contains("PHYS201"));
+        assert!(result.contains("CHEM301"));
+        assert!(result.contains("CS401"));
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_load_grades_summary_missing_file() {
+        use std::env;
+        let temp_dir = env::temp_dir().join("test_grades_missing");
+        let _ = std::fs::create_dir_all(&temp_dir);
+
+        let result = load_grades_summary(&temp_dir);
+        assert!(result.is_empty());
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_load_grades_summary_valid_file() {
+        use std::env;
+        let temp_dir = env::temp_dir().join("test_grades_valid");
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let grades_file = temp_dir.join("grades_summary.json");
+
+        let grades_data = serde_json::json!({
+            "MATH101": {
+                "2023_CS": [
+                    {"name": "Exam", "percent": "70%"}
+                ],
+                "default": [
+                    {"name": "Exam", "percent": "60%"}
+                ]
+            }
+        });
+
+        fs::write(&grades_file, grades_data.to_string()).unwrap();
+
+        let result = load_grades_summary(&temp_dir);
+
+        assert_eq!(result.len(), 1);
+        assert!(result.contains_key("MATH101"));
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_load_grades_summary_invalid_json() {
+        use std::env;
+        let temp_dir = env::temp_dir().join("test_grades_invalid");
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let grades_file = temp_dir.join("grades_summary.json");
+
+        fs::write(&grades_file, "invalid json{{{").unwrap();
+
+        let result = load_grades_summary(&temp_dir);
+
+        // Should return empty HashMap on parse error
+        assert!(result.is_empty());
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+}
