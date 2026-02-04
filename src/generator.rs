@@ -99,7 +99,7 @@ pub async fn generate_course_pages(
 
         majors_by_year
             .entry(plan.year.clone())
-            .or_insert_with(Vec::new)
+            .or_default()
             .push((plan.major_code.clone(), plan.major_name.clone()));
 
         let major_dir = docs_dir.join(&plan.year).join(&plan.major_code);
@@ -154,7 +154,7 @@ pub async fn generate_course_pages(
                     fs::create_dir_all(&sem_dir)?;
                     courses_by_semester
                         .entry(folder.to_string())
-                        .or_insert_with(Vec::new)
+                        .or_default()
                         .push((course.code.clone(), course.name.clone()));
                     sem_dir
                 } else {

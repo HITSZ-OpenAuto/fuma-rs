@@ -106,7 +106,7 @@ pub fn load_all_plans(data_dir: &Path) -> Result<Vec<Plan>> {
     for entry in WalkDir::new(&plans_dir)
         .into_iter()
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map_or(false, |ext| ext == "toml"))
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "toml"))
     {
         let content = fs::read_to_string(entry.path())?;
         let toml_plan: TomlPlan = toml::from_str(&content)?;

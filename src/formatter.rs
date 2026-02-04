@@ -259,7 +259,7 @@ fn wrap_accordions_in_container(content: &str) -> String {
                 if !next_is_accordion {
                     // End of sequence - wrap and flush
                     result.push("<Accordions>".to_string());
-                    result.extend(accordion_buffer.drain(..));
+                    result.append(&mut accordion_buffer);
                     result.push("</Accordions>".to_string());
                     in_sequence = false;
                 }
@@ -286,7 +286,7 @@ pub fn format_all_mdx_files(docs_dir: &Path) -> crate::error::Result<usize> {
     for entry in WalkDir::new(docs_dir)
         .into_iter()
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map_or(false, |ext| ext == "mdx"))
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "mdx"))
     {
         let path = entry.path();
         let original = fs::read_to_string(path)?;

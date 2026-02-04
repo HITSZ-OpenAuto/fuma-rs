@@ -43,7 +43,7 @@ impl GitHubFetcher {
         let client = reqwest::Client::builder()
             .default_headers(headers)
             .build()
-            .map_err(|e| FumaError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| FumaError::Io(std::io::Error::other(e)))?;
 
         Ok(Self { client })
     }
@@ -70,7 +70,7 @@ impl GitHubFetcher {
             .get(&url)
             .send()
             .await
-            .map_err(|e| FumaError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| FumaError::Io(std::io::Error::other(e)))?;
 
         if !response.status().is_success() {
             return Err(FumaError::Io(std::io::Error::new(
@@ -82,7 +82,7 @@ impl GitHubFetcher {
         let content: GitHubContent = response
             .json()
             .await
-            .map_err(|e| FumaError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| FumaError::Io(std::io::Error::other(e)))?;
 
         // Decode base64 content
         if content.encoding == "base64" {
