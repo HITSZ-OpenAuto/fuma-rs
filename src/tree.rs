@@ -47,11 +47,11 @@ pub fn build_file_tree(flat_data: &WorktreeData, repo_name: &str) -> Vec<FileNod
             }
         }
 
-        fn to_node(self, name: String) -> FileNode {
+        fn into_node(self, name: String) -> FileNode {
             let mut children: Vec<FileNode> = self
                 .children
                 .into_iter()
-                .map(|(child_name, builder)| builder.to_node(child_name))
+                .map(|(child_name, builder)| builder.into_node(child_name))
                 .collect();
 
             // Sort: folders first, then by name
@@ -107,7 +107,7 @@ pub fn build_file_tree(flat_data: &WorktreeData, repo_name: &str) -> Vec<FileNod
     let mut result: Vec<FileNode> = root
         .children
         .into_iter()
-        .map(|(name, builder)| builder.to_node(name))
+        .map(|(name, builder)| builder.into_node(name))
         .collect();
 
     result.sort_by(|a, b| match (&a.node_type, &b.node_type) {

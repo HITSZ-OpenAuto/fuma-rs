@@ -136,14 +136,9 @@ fn escape_curly_braces_in_math(content: &str) -> String {
             let mut found_close = false;
 
             while j < chars.len() {
-                if chars[j] == '$' {
-                    if is_display && j + 1 < chars.len() && chars[j + 1] == '$' {
-                        found_close = true;
-                        break;
-                    } else if !is_display {
-                        found_close = true;
-                        break;
-                    }
+                if chars[j] == '$' && j + 1 < chars.len() && chars[j + 1] == '$' {
+                    found_close = true;
+                    break;
                 }
                 j += 1;
             }
@@ -245,8 +240,8 @@ fn wrap_accordions_in_container(content: &str) -> String {
             if depth == 0 {
                 // Look ahead to see if next non-empty line is another Accordion
                 let mut next_is_accordion = false;
-                for j in (i + 1)..lines.len() {
-                    let next_line = lines[j].trim();
+                for next_line in lines.iter().skip(i + 1) {
+                    let next_line = next_line.trim();
                     if next_line.is_empty() {
                         continue;
                     }
