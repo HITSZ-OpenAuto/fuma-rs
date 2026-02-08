@@ -10,6 +10,7 @@ pub fn format_mdx_file(content: &str) -> String {
     // Apply all transformations in order
     result = remove_html_comments(&result);
     result = remove_shield_badges(&result);
+    result = convert_bare_urls_to_links(&result);
     result = fix_self_closing_tags(&result);
     result = fix_malformed_html(&result);
     result = convert_style_to_jsx(&result);
@@ -28,6 +29,12 @@ pub fn format_mdx_file(content: &str) -> String {
 fn remove_html_comments(content: &str) -> String {
     let re = Regex::new(r"<!--[\s\S]*?-->").unwrap();
     re.replace_all(content, "").to_string()
+}
+
+/// Convert bare URLs in angle brackets to Markdown links for MDX compatibility
+fn convert_bare_urls_to_links(content: &str) -> String {
+    let re = Regex::new(r"<(https?://[^>]+)>").unwrap();
+    re.replace_all(content, "[$1]($1)").to_string()
 }
 
 /// Remove shield.io badges (markdown image syntax)
@@ -404,6 +411,13 @@ mod tests {
         let output = remove_shield_badges(input);
         assert!(!output.contains("shields.io"));
         assert!(output.contains("Normal content"));
+    }
+
+    #[test]
+    fn test_convert_bare_urls_to_links_http() {
+        let input = "See <http://example.com> for more.";
+        let output = convert_bare_urls_to_links(input);
+        assert_eq!(output, "See [http://example.com](http://example.com) for more.");
     }
 
     #[test]
