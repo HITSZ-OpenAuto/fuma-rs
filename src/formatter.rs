@@ -14,6 +14,7 @@ pub fn format_mdx_file(content: &str) -> String {
     result = fix_self_closing_tags(&result);
     result = fix_malformed_html(&result);
     result = convert_style_to_jsx(&result);
+    result = convert_hugo_callout_shortcodes(&result);
     result = convert_hugo_details_to_accordion(&result);
     result = convert_math_blocks(&result);
     result = convert_inline_math(&result);
@@ -125,6 +126,23 @@ fn convert_style_to_jsx(content: &str) -> String {
         }
     })
     .to_string()
+}
+
+/// Remove Hugo callout shortcodes that are invalid in MDX.
+fn convert_hugo_callout_shortcodes(content: &str) -> String {
+    let mut result = content.to_string();
+
+    // Remove opening callout tags such as:
+    // {{< callout type="info" >}} or {{% callout type="warning" %}}
+    let re_open = Regex::new(r"\{\{[<%]\s*callout\b[^{}]*[>%]\}\}").unwrap();
+    result = re_open.replace_all(&result, "").to_string();
+
+    // Remove closing callout tags such as:
+    // {{< /callout >}} or {{% /callout %}}
+    let re_close = Regex::new(r"\{\{[<%]\s*/callout\s*[>%]\}\}").unwrap();
+    result = re_close.replace_all(&result, "").to_string();
+
+    result
 }
 
 /// Convert Hugo details shortcode to Fumadocs Accordion components
@@ -505,6 +523,28 @@ mod tests {
         assert!(output.contains("<Accordion title=\"Test\">"));
         assert!(output.contains("</Accordion>"));
         assert!(output.contains("Content here"));
+    }
+
+    #[test]
+    fn test_convert_hugo_callout_shortcodes() {
+        let input = r#"{{< callout type="info" >}}
+Some content
+{{< /callout >}}"#;
+        let output = convert_hugo_callout_shortcodes(input);
+        assert!(!output.contains("{{< callout"));
+        assert!(!output.contains("{{< /callout"));
+        assert!(output.contains("Some content"));
+    }
+
+    #[test]
+    fn test_convert_hugo_callout_shortcodes_percent_syntax() {
+        let input = r#"{{% callout type="warning" %}}
+Warning content
+{{% /callout %}}"#;
+        let output = convert_hugo_callout_shortcodes(input);
+        assert!(!output.contains("{{% callout"));
+        assert!(!output.contains("{{% /callout"));
+        assert!(output.contains("Warning content"));
     }
 
     #[test]
