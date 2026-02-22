@@ -2,12 +2,19 @@
 pub const SEMESTER_MAPPING: &[(&str, &str, &str)] = &[
     ("第一学年秋季", "fresh-autumn", "大一·秋"),
     ("第一学年春季", "fresh-spring", "大一·春"),
+    ("第一学年夏季", "fresh-summer", "大一·夏"),
     ("第二学年秋季", "sophomore-autumn", "大二·秋"),
     ("第二学年春季", "sophomore-spring", "大二·春"),
+    ("第二学年夏季", "sophomore-summer", "大二·夏"),
     ("第三学年秋季", "junior-autumn", "大三·秋"),
     ("第三学年春季", "junior-spring", "大三·春"),
+    ("第三学年夏季", "junior-summer", "大三·夏"),
     ("第四学年秋季", "senior-autumn", "大四·秋"),
     ("第四学年春季", "senior-spring", "大四·春"),
+    ("第四学年夏季", "senior-summer", "大四·夏"),
+    ("第五学年秋季", "fifth-autumn", "大五·秋"),
+    ("第五学年春季", "fifth-spring", "大五·春"),
+    ("第五学年夏季", "fifth-summer", "大五·夏"),
 ];
 
 /// Get semester folder and title from Chinese semester name
@@ -18,9 +25,39 @@ pub fn get_semester_folder(recommended: &str) -> Option<(&'static str, &'static 
         .map(|&(_, folder, title)| (folder, title))
 }
 
-// ============================================================================
-// File Exclusion Rules
-// ============================================================================
+/// Get semester title from folder name.
+pub fn get_semester_title_by_folder(folder: &str) -> Option<&'static str> {
+    SEMESTER_MAPPING
+        .iter()
+        .find(|&&(_, f, _)| f == folder)
+        .map(|&(_, _, title)| title)
+}
+
+/// Parse semester field that may contain multiple semester values.
+///
+/// Examples:
+/// - "第三学年秋季"
+/// - "第三学年秋季,第四学年秋季"
+/// - "第三学年秋季，第四学年秋季"
+pub fn parse_semester_folders(recommended: &str) -> Vec<(&'static str, &'static str)> {
+    let mut folders = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    for token in recommended.split(|c| [',', '，', '、'].contains(&c)) {
+        let semester = token.trim();
+        if semester.is_empty() {
+            continue;
+        }
+
+        if let Some((folder, title)) = get_semester_folder(semester) {
+            if seen.insert(folder) {
+                folders.push((folder, title));
+            }
+        }
+    }
+
+    folders
+}
 
 /// Files to exclude from the file tree
 pub const EXCLUDED_PATTERNS: &[&str] = &[".gitkeep", "README.md", "LICENSE", "tag.txt"];
@@ -71,13 +108,16 @@ mod tests {
         let result = get_semester_folder("第二学年春季");
         assert_eq!(result, Some(("sophomore-spring", "大二·春")));
 
-        let result = get_semester_folder("第四学年春季");
-        assert_eq!(result, Some(("senior-spring", "大四·春")));
+        let result = get_semester_folder("第四学年夏季");
+        assert_eq!(result, Some(("senior-summer", "大四·夏")));
+
+        let result = get_semester_folder("第五学年春季");
+        assert_eq!(result, Some(("fifth-spring", "大五·春")));
     }
 
     #[test]
     fn test_get_semester_folder_invalid() {
-        let result = get_semester_folder("第五学年秋季");
+        let result = get_semester_folder("第六学年秋季");
         assert_eq!(result, None);
 
         let result = get_semester_folder("invalid");
@@ -85,6 +125,40 @@ mod tests {
 
         let result = get_semester_folder("");
         assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_parse_semester_folders_single() {
+        let result = parse_semester_folders("第二学年夏季");
+        assert_eq!(result, vec![("sophomore-summer", "大二·夏")]);
+    }
+
+    #[test]
+    fn test_parse_semester_folders_multiple() {
+        let result = parse_semester_folders("第三学年秋季,第四学年秋季");
+        assert_eq!(
+            result,
+            vec![("junior-autumn", "大三·秋"), ("senior-autumn", "大四·秋")]
+        );
+    }
+
+    #[test]
+    fn test_parse_semester_folders_dedup_and_invalid() {
+        let result = parse_semester_folders("第三学年秋季，第三学年秋季，未知学期");
+        assert_eq!(result, vec![("junior-autumn", "大三·秋")]);
+    }
+
+    #[test]
+    fn test_get_semester_title_by_folder() {
+        assert_eq!(
+            get_semester_title_by_folder("fresh-summer"),
+            Some("大一·夏")
+        );
+        assert_eq!(
+            get_semester_title_by_folder("fifth-autumn"),
+            Some("大五·秋")
+        );
+        assert_eq!(get_semester_title_by_folder("unknown"), None);
     }
 
     #[test]
@@ -130,8 +204,8 @@ mod tests {
 
     #[test]
     fn test_semester_mapping_complete() {
-        // Ensure all 8 semesters are mapped
-        assert_eq!(SEMESTER_MAPPING.len(), 8);
+        // Ensure all 15 semesters (5 academic years x 3 seasons) are mapped
+        assert_eq!(SEMESTER_MAPPING.len(), 15);
 
         // Check uniqueness of folders
         let mut folders = std::collections::HashSet::new();

@@ -13,6 +13,8 @@ use walkdir::WalkDir;
 
 /// Grades summary data structure mapping course codes to grade details per plan variant
 type GradesSummary = HashMap<String, HashMap<String, Vec<GradeDetail>>>;
+/// Lookup table mapping course code to repo ID with optional plan-specific overrides
+type LookupTable = HashMap<String, HashMap<String, String>>;
 
 /// Load grades_summary.json if present.
 ///
@@ -28,6 +30,43 @@ fn load_grades_summary(data_dir: &Path) -> GradesSummary {
         Ok(content) => serde_json::from_str(&content).unwrap_or_else(|_| HashMap::new()),
         Err(_) => HashMap::new(),
     }
+}
+
+/// Load lookup_table.toml if present.
+///
+/// Returns an empty HashMap if the file doesn't exist or can't be parsed.
+fn load_lookup_table(data_dir: &Path) -> LookupTable {
+    let path = data_dir.join("lookup_table.toml");
+
+    if !path.exists() {
+        return HashMap::new();
+    }
+
+    match fs::read_to_string(&path) {
+        Ok(content) => toml::from_str(&content).unwrap_or_else(|_| HashMap::new()),
+        Err(_) => HashMap::new(),
+    }
+}
+
+/// Resolve repository ID for a course code by lookup table rules.
+///
+/// Priority:
+/// 1. Exact match by `plan_id`
+/// 2. `DEFAULT` fallback
+/// 3. Original `course_code` (identity mapping)
+fn resolve_repo_id(lookup_table: &LookupTable, course_code: &str, plan_id: &str) -> String {
+    lookup_table
+        .get(course_code)
+        .and_then(|mapping| {
+            mapping
+                .get(plan_id)
+                .or_else(|| mapping.get("DEFAULT"))
+                .or_else(|| mapping.get("default"))
+        })
+        .map(|repo_id| repo_id.trim())
+        .filter(|repo_id| !repo_id.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| course_code.to_string())
 }
 
 /// Select grade details for a course based on hierarchical matching rules.
@@ -100,6 +139,8 @@ pub fn load_all_plans(data_dir: &Path) -> Result<Vec<Plan>> {
 
     // Load grades summary once for all plans
     let grades_summary = load_grades_summary(data_dir);
+    // Load course_code -> repo_id lookup table once for all plans
+    let lookup_table = load_lookup_table(data_dir);
 
     let mut plans = Vec::new();
 
@@ -126,9 +167,12 @@ pub fn load_all_plans(data_dir: &Path) -> Result<Vec<Plan>> {
                         &toml_plan.info.major_name,
                     )
                 });
+                let repo_id =
+                    resolve_repo_id(&lookup_table, &c.course_code, &toml_plan.info.plan_id);
 
                 Course {
                     code: c.course_code,
+                    repo_id,
                     name: c.course_name,
                     credit: c.credit,
                     assessment_method: c.assessment_method,
@@ -329,6 +373,37 @@ mod tests {
     }
 
     #[test]
+    fn test_resolve_repo_id_plan_specific() {
+        let mut lookup_table = HashMap::new();
+        let mut mapping = HashMap::new();
+        mapping.insert("PLAN_A".to_string(), "REPO_A".to_string());
+        mapping.insert("DEFAULT".to_string(), "REPO_DEFAULT".to_string());
+        lookup_table.insert("COURSE1".to_string(), mapping);
+
+        let repo_id = resolve_repo_id(&lookup_table, "COURSE1", "PLAN_A");
+        assert_eq!(repo_id, "REPO_A");
+    }
+
+    #[test]
+    fn test_resolve_repo_id_default_fallback() {
+        let mut lookup_table = HashMap::new();
+        let mut mapping = HashMap::new();
+        mapping.insert("DEFAULT".to_string(), "REPO_DEFAULT".to_string());
+        lookup_table.insert("COURSE1".to_string(), mapping);
+
+        let repo_id = resolve_repo_id(&lookup_table, "COURSE1", "PLAN_B");
+        assert_eq!(repo_id, "REPO_DEFAULT");
+    }
+
+    #[test]
+    fn test_resolve_repo_id_identity_fallback() {
+        let lookup_table: LookupTable = HashMap::new();
+
+        let repo_id = resolve_repo_id(&lookup_table, "COURSE1", "PLAN_A");
+        assert_eq!(repo_id, "COURSE1");
+    }
+
+    #[test]
     fn test_load_repos_list_nonexistent() {
         use std::env;
         let temp_dir = env::temp_dir().join("test_repos_list_nonexistent");
@@ -417,6 +492,66 @@ mod tests {
         let result = load_grades_summary(&temp_dir);
 
         // Should return empty HashMap on parse error
+        assert!(result.is_empty());
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_load_lookup_table_missing_file() {
+        use std::env;
+        let temp_dir = env::temp_dir().join("test_lookup_missing");
+        let _ = std::fs::create_dir_all(&temp_dir);
+
+        let result = load_lookup_table(&temp_dir);
+        assert!(result.is_empty());
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_load_lookup_table_valid_file() {
+        use std::env;
+        let temp_dir = env::temp_dir().join("test_lookup_valid");
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let lookup_file = temp_dir.join("lookup_table.toml");
+
+        fs::write(
+            &lookup_file,
+            r#"
+[COURSE1]
+DEFAULT = "REPO1"
+
+[COURSE2]
+PLAN_A = "REPO2A"
+"#,
+        )
+        .unwrap();
+
+        let result = load_lookup_table(&temp_dir);
+
+        assert_eq!(
+            result.get("COURSE1").and_then(|m| m.get("DEFAULT")),
+            Some(&"REPO1".to_string())
+        );
+        assert_eq!(
+            result.get("COURSE2").and_then(|m| m.get("PLAN_A")),
+            Some(&"REPO2A".to_string())
+        );
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_load_lookup_table_invalid_toml() {
+        use std::env;
+        let temp_dir = env::temp_dir().join("test_lookup_invalid");
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let lookup_file = temp_dir.join("lookup_table.toml");
+
+        fs::write(&lookup_file, "[COURSE1\nDEFAULT = \"BROKEN\"").unwrap();
+
+        let result = load_lookup_table(&temp_dir);
         assert!(result.is_empty());
 
         let _ = std::fs::remove_dir_all(&temp_dir);

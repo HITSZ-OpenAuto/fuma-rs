@@ -1,9 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-// ============================================================================
-// TOML Data Models (for reading from hoa-majors data)
-// ============================================================================
-
 #[derive(Debug, Deserialize)]
 pub struct TomlPlan {
     pub info: PlanInfo,
@@ -16,7 +12,7 @@ pub struct PlanInfo {
     pub major_code: String,
     pub major_name: String,
     #[serde(rename = "plan_ID")]
-    pub _plan_id: String,
+    pub plan_id: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -47,10 +43,6 @@ pub struct HourDistribution {
     pub tutoring: Option<u32>,
 }
 
-// ============================================================================
-// Runtime Data Models
-// ============================================================================
-
 #[derive(Debug, Clone)]
 pub struct Plan {
     pub year: String,
@@ -62,6 +54,7 @@ pub struct Plan {
 #[derive(Debug, Clone)]
 pub struct Course {
     pub code: String,
+    pub repo_id: String,
     pub name: String,
     pub credit: Option<f64>,
     pub assessment_method: Option<String>,
@@ -71,10 +64,6 @@ pub struct Course {
     pub grade_details: Option<Vec<GradeDetail>>,
 }
 
-// ============================================================================
-// Worktree JSON Models
-// ============================================================================
-
 #[derive(Debug, Deserialize)]
 pub struct WorktreeData(pub std::collections::HashMap<String, FileMetadata>);
 
@@ -83,10 +72,6 @@ pub struct FileMetadata {
     pub size: Option<u64>,
     pub time: Option<i64>,
 }
-
-// ============================================================================
-// File Tree Models
-// ============================================================================
 
 #[derive(Debug, Clone)]
 pub struct FileNode {
@@ -103,10 +88,6 @@ pub enum NodeType {
     Folder,
     File,
 }
-
-// ============================================================================
-// Frontmatter Models (for YAML serialization)
-// ============================================================================
 
 #[derive(Debug, Serialize)]
 pub struct Frontmatter {

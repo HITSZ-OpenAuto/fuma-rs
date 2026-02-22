@@ -1,4 +1,4 @@
-use crate::constants::{get_semester_folder, SEMESTER_MAPPING};
+use crate::constants::{get_semester_title_by_folder, parse_semester_folders, SEMESTER_MAPPING};
 use crate::error::Result;
 use crate::models::{
     Course, CourseMetadata, Frontmatter, GradingItem, HourDistributionMeta, Plan, WorktreeData,
@@ -7,10 +7,6 @@ use crate::tree::{build_file_tree, tree_to_jsx};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
-
-// ============================================================================
-// Frontmatter Generation
-// ============================================================================
 
 /// Build YAML frontmatter for a course page using serde_yaml
 fn build_frontmatter(title: &str, course: &Course) -> String {
@@ -80,10 +76,6 @@ fn build_frontmatter(title: &str, course: &Course) -> String {
     frontmatter.to_yaml()
 }
 
-// ============================================================================
-// Page Generation
-// ============================================================================
-
 /// Generate all course pages and index pages
 pub async fn generate_course_pages(
     plans: &[Plan],
@@ -105,38 +97,18 @@ pub async fn generate_course_pages(
         let major_dir = docs_dir.join(&plan.year).join(&plan.major_code);
         fs::create_dir_all(&major_dir)?;
 
-        // Write major metadata
-        let pages: Vec<String> = std::iter::once("...".to_string())
-            .chain(
-                SEMESTER_MAPPING
-                    .iter()
-                    .map(|(_, folder, _)| folder.to_string()),
-            )
-            .collect();
-
-        let major_meta = serde_json::json!({
-            "title": plan.major_name,
-            "root": true,
-            "defaultOpen": true,
-            "pages": pages,
-        });
-        fs::write(
-            major_dir.join("meta.json"),
-            serde_json::to_string_pretty(&major_meta)?,
-        )?;
-
         // Track courses by semester for this major
         let mut courses_by_semester: HashMap<String, Vec<(String, String)>> = HashMap::new();
 
         // Process each course
         for course in &plan.courses {
             // Only process courses that exist in repos_list (if repos_list.txt exists)
-            if !repos_set.is_empty() && !repos_set.contains(&course.code) {
+            if !repos_set.is_empty() && !repos_set.contains(&course.repo_id) {
                 continue;
             }
 
-            let mdx_path = repos_dir.join(format!("{}.mdx", course.code));
-            let json_path = repos_dir.join(format!("{}.json", course.code));
+            let mdx_path = repos_dir.join(format!("{}.mdx", course.repo_id));
+            let json_path = repos_dir.join(format!("{}.json", course.repo_id));
 
             if !mdx_path.exists() {
                 continue;
@@ -147,32 +119,37 @@ pub async fn generate_course_pages(
             let content_lines: Vec<&str> = readme_content.lines().skip(2).collect();
             let content = content_lines.join("\n");
 
-            // Determine target directory based on semester
-            let target_dir = if let Some(ref sem) = course.recommended_semester {
-                if let Some((folder, _title)) = get_semester_folder(sem) {
+            // Determine target directories based on semester (supports multi-semester values)
+            let semester_folders = course
+                .recommended_semester
+                .as_deref()
+                .map(parse_semester_folders)
+                .unwrap_or_default();
+
+            let mut target_dirs = Vec::new();
+            if semester_folders.is_empty() {
+                target_dirs.push(major_dir.clone());
+            } else {
+                for (folder, _title) in semester_folders {
                     let sem_dir = major_dir.join(folder);
                     fs::create_dir_all(&sem_dir)?;
                     courses_by_semester
                         .entry(folder.to_string())
                         .or_default()
                         .push((course.code.clone(), course.name.clone()));
-                    sem_dir
-                } else {
-                    major_dir.clone()
+                    target_dirs.push(sem_dir);
                 }
-            } else {
-                major_dir.clone()
-            };
+            }
 
             // Generate file tree from worktree.json
             let filetree_content = if json_path.exists() {
                 let json_content = fs::read_to_string(&json_path)?;
                 let worktree: WorktreeData = serde_json::from_str(&json_content)?;
-                let tree = build_file_tree(&worktree, &course.code);
+                let tree = build_file_tree(&worktree, &course.repo_id);
                 let jsx = tree_to_jsx(&tree, 1);
                 format!(
                     "\n\n## 资源下载\n\n<Files url=\"https://open.osa.moe/openauto/{}\">\n{}\n</Files>",
-                    course.code, jsx
+                    course.repo_id, jsx
                 )
             } else {
                 String::new()
@@ -186,20 +163,45 @@ pub async fn generate_course_pages(
                 "{}\n\n<CourseInfo />\n\n{}{}",
                 frontmatter, content, filetree_content
             );
-            fs::write(
-                target_dir.join(format!("{}.mdx", course.code)),
-                page_content,
-            )?;
+            for target_dir in target_dirs {
+                fs::write(
+                    target_dir.join(format!("{}.mdx", course.code)),
+                    &page_content,
+                )?;
+            }
         }
 
+        // Keep semester pages and navigation in semantic order
+        let ordered_semester_folders: Vec<String> = SEMESTER_MAPPING
+            .iter()
+            .filter_map(|(_, folder, _)| {
+                courses_by_semester
+                    .contains_key(*folder)
+                    .then_some((*folder).to_string())
+            })
+            .collect();
+
+        // Write major metadata
+        let pages: Vec<String> = std::iter::once("...".to_string())
+            .chain(ordered_semester_folders.iter().cloned())
+            .collect();
+
+        let major_meta = serde_json::json!({
+            "title": plan.major_name,
+            "root": true,
+            "defaultOpen": true,
+            "pages": pages,
+        });
+        fs::write(
+            major_dir.join("meta.json"),
+            serde_json::to_string_pretty(&major_meta)?,
+        )?;
+
         // Generate semester index pages
-        for (folder, courses) in &courses_by_semester {
+        for folder in &ordered_semester_folders {
+            let courses = courses_by_semester.get(folder).cloned().unwrap_or_default();
             let sem_dir = major_dir.join(folder);
-            let sem_title = SEMESTER_MAPPING
-                .iter()
-                .find(|(_, f, _)| f == folder)
-                .map(|(_, _, t)| *t)
-                .unwrap_or(folder.as_str());
+            let sem_title = get_semester_title_by_folder(folder).unwrap_or(folder.as_str());
 
             let mut cards = vec![
                 "---".to_string(),
@@ -209,7 +211,7 @@ pub async fn generate_course_pages(
                 "<Cards>".to_string(),
             ];
 
-            for (code, name) in courses {
+            for (code, name) in &courses {
                 cards.push(format!(
                     "  <Card title=\"{}\" href=\"/docs/{}/{}/{}/{}\" />",
                     name, plan.year, plan.major_code, folder, code
@@ -229,7 +231,8 @@ pub async fn generate_course_pages(
             "<Cards>".to_string(),
         ];
 
-        for (folder, title) in SEMESTER_MAPPING.iter().map(|(_, f, t)| (f, t)) {
+        for folder in &ordered_semester_folders {
+            let title = get_semester_title_by_folder(folder).unwrap_or(folder.as_str());
             major_index.push(format!(
                 "  <Card title=\"{}\" href=\"/docs/{}/{}/{}\" />",
                 title, plan.year, plan.major_code, folder

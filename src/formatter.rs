@@ -180,21 +180,22 @@ fn convert_math_blocks(content: &str) -> String {
     // This regex captures: opening $$, optional newline, content, optional newline, closing $$
     let re = Regex::new(r"\$\$(\r?\n)?([\s\S]*?)(\r?\n)?\$\$").unwrap();
 
-    let result = re.replace_all(&protected_content, |caps: &regex::Captures| {
-        let has_opening_newline = caps.get(1).is_some();
-        let math_content = &caps[2];
-        let has_closing_newline = caps.get(3).is_some();
+    let result = re
+        .replace_all(&protected_content, |caps: &regex::Captures| {
+            let has_opening_newline = caps.get(1).is_some();
+            let math_content = &caps[2];
+            let has_closing_newline = caps.get(3).is_some();
 
-        // If original format had newlines, preserve them; otherwise add them
-        if has_opening_newline && has_closing_newline {
-            // Block format: $$\ncontent\n$$ -> ```math\ncontent\n```
-            format!("```math\n{}\n```", math_content)
-        } else {
-            // Inline format: $$content$$ -> ```math\ncontent\n```
-            format!("```math\n{}\n```", math_content)
-        }
-    })
-    .to_string();
+            // If original format had newlines, preserve them; otherwise add them
+            if has_opening_newline && has_closing_newline {
+                // Block format: $$\ncontent\n$$ -> ```math\ncontent\n```
+                format!("```math\n{}\n```", math_content)
+            } else {
+                // Inline format: $$content$$ -> ```math\ncontent\n```
+                format!("```math\n{}\n```", math_content)
+            }
+        })
+        .to_string();
 
     // Restore code blocks
     let mut final_result = result;
@@ -417,7 +418,10 @@ mod tests {
     fn test_convert_bare_urls_to_links_http() {
         let input = "See <http://example.com> for more.";
         let output = convert_bare_urls_to_links(input);
-        assert_eq!(output, "See [http://example.com](http://example.com) for more.");
+        assert_eq!(
+            output,
+            "See [http://example.com](http://example.com) for more."
+        );
     }
 
     #[test]

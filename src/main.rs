@@ -111,7 +111,7 @@ async fn main() -> Result<()> {
         plans
             .into_iter()
             .map(|mut plan| {
-                plan.courses.retain(|c| repos_set.contains(&c.code));
+                plan.courses.retain(|c| repos_set.contains(&c.repo_id));
                 plan
             })
             .collect()
