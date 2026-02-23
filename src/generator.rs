@@ -136,7 +136,7 @@ pub async fn generate_course_pages(
                     courses_by_semester
                         .entry(folder.to_string())
                         .or_default()
-                        .push((course.code.clone(), course.name.clone()));
+                        .push((course.repo_id.clone(), course.name.clone()));
                     target_dirs.push(sem_dir);
                 }
             }
@@ -165,7 +165,7 @@ pub async fn generate_course_pages(
             );
             for target_dir in target_dirs {
                 fs::write(
-                    target_dir.join(format!("{}.mdx", course.code)),
+                    target_dir.join(format!("{}.mdx", course.repo_id)),
                     &page_content,
                 )?;
             }
@@ -211,10 +211,10 @@ pub async fn generate_course_pages(
                 "<Cards>".to_string(),
             ];
 
-            for (code, name) in &courses {
+            for (slug, name) in &courses {
                 cards.push(format!(
                     "  <Card title=\"{}\" href=\"/docs/{}/{}/{}/{}\" />",
-                    name, plan.year, plan.major_code, folder, code
+                    name, plan.year, plan.major_code, folder, slug
                 ));
             }
             cards.push("</Cards>".to_string());
