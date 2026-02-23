@@ -52,8 +52,14 @@ pub struct Plan {
 }
 
 #[derive(Debug, Clone)]
+pub struct SharedCategory {
+    pub id: String,
+    pub title: String,
+    pub repo_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
 pub struct Course {
-    pub code: String,
     pub repo_id: String,
     pub name: String,
     pub credit: Option<f64>,

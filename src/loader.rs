@@ -5,21 +5,36 @@
 //! upfront, we avoid the N+1 query problem that plagued the Python implementation.
 
 use crate::error::{FumaError, Result};
-use crate::models::{Course, GradeDetail, Plan, TomlPlan};
+use crate::models::{Course, GradeDetail, Plan, SharedCategory, TomlPlan};
+use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 use walkdir::WalkDir;
 
+#[derive(Debug, Deserialize)]
+struct TomlSharedCategories {
+    categories: Vec<TomlSharedCategory>,
+    #[serde(default)]
+    no_course_info_repo_ids: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct TomlSharedCategory {
+    id: String,
+    title: String,
+    repo_ids: Vec<String>,
+}
+
 /// Grades summary data structure mapping course codes to grade details per plan variant
-type GradesSummary = HashMap<String, HashMap<String, Vec<GradeDetail>>>;
+pub type GradesSummary = HashMap<String, HashMap<String, Vec<GradeDetail>>>;
 /// Lookup table mapping course code to repo ID with optional plan-specific overrides
 type LookupTable = HashMap<String, HashMap<String, String>>;
 
 /// Load grades_summary.json if present.
 ///
 /// Returns an empty HashMap if the file doesn't exist or can't be parsed.
-fn load_grades_summary(data_dir: &Path) -> GradesSummary {
+pub fn load_grades_summary(data_dir: &Path) -> GradesSummary {
     let path = data_dir.join("grades_summary.json");
 
     if !path.exists() {
@@ -171,7 +186,6 @@ pub fn load_all_plans(data_dir: &Path) -> Result<Vec<Plan>> {
                     resolve_repo_id(&lookup_table, &c.course_code, &toml_plan.info.plan_id);
 
                 Course {
-                    code: c.course_code,
                     repo_id,
                     name: c.course_name,
                     credit: c.credit,
@@ -193,6 +207,59 @@ pub fn load_all_plans(data_dir: &Path) -> Result<Vec<Plan>> {
     }
 
     Ok(plans)
+}
+
+/// Config for shared categories and which repo IDs are index pages (no CourseInfo).
+pub struct SharedCategoriesConfig {
+    pub categories: Vec<SharedCategory>,
+    pub no_course_info_repo_ids: HashSet<String>,
+}
+
+/// Load shared_categories.toml if present.
+///
+/// Returns default (empty categories, empty no_course_info set) if file doesn't exist or can't be parsed.
+pub fn load_shared_categories(data_dir: &Path) -> SharedCategoriesConfig {
+    let path = data_dir.join("shared_categories.toml");
+
+    if !path.exists() {
+        return SharedCategoriesConfig {
+            categories: Vec::new(),
+            no_course_info_repo_ids: HashSet::new(),
+        };
+    }
+
+    let content = match fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(_) => {
+            return SharedCategoriesConfig {
+                categories: Vec::new(),
+                no_course_info_repo_ids: HashSet::new(),
+            };
+        }
+    };
+
+    let toml: TomlSharedCategories = match toml::from_str(&content) {
+        Ok(t) => t,
+        Err(_) => {
+            return SharedCategoriesConfig {
+                categories: Vec::new(),
+                no_course_info_repo_ids: HashSet::new(),
+            };
+        }
+    };
+
+    SharedCategoriesConfig {
+        categories: toml
+            .categories
+            .into_iter()
+            .map(|c| SharedCategory {
+                id: c.id,
+                title: c.title,
+                repo_ids: c.repo_ids,
+            })
+            .collect(),
+        no_course_info_repo_ids: toml.no_course_info_repo_ids.into_iter().collect(),
+    }
 }
 
 /// Load repos_list.txt to filter available courses.

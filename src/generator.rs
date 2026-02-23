@@ -1,7 +1,8 @@
 use crate::constants::{get_semester_title_by_folder, parse_semester_folders, SEMESTER_MAPPING};
 use crate::error::Result;
 use crate::models::{
-    Course, CourseMetadata, Frontmatter, GradingItem, HourDistributionMeta, Plan, WorktreeData,
+    Course, CourseMetadata, Frontmatter, GradeDetail, GradingItem, HourDistributionMeta, Plan,
+    SharedCategory, WorktreeData,
 };
 use crate::tree::{build_file_tree, tree_to_jsx};
 use std::collections::{HashMap, HashSet};
@@ -76,9 +77,47 @@ fn build_frontmatter(title: &str, course: &Course) -> String {
     frontmatter.to_yaml()
 }
 
+fn title_from_mdx(mdx_content: &str, fallback: &str) -> String {
+    let lines: Vec<&str> = mdx_content.lines().collect();
+    for line in lines.iter().take(5) {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed == "---" {
+            continue;
+        }
+        let raw = if let Some(t) = trimmed.strip_prefix("title:") {
+            t.trim().trim_matches('"').trim_matches('\'').to_string()
+        } else {
+            trimmed.to_string()
+        };
+        let raw = raw.trim_start_matches("# ").trim();
+        return if let Some(rest) = raw.split_once(" - ") {
+            rest.1.trim().to_string()
+        } else {
+            raw.to_string()
+        };
+    }
+    fallback.to_string()
+}
+
+fn minimal_course(repo_id: &str, name: &str, grade_details: Option<Vec<GradeDetail>>) -> Course {
+    Course {
+        repo_id: repo_id.to_string(),
+        name: name.to_string(),
+        credit: None,
+        assessment_method: None,
+        course_nature: None,
+        recommended_semester: None,
+        hours: None,
+        grade_details,
+    }
+}
+
 /// Generate all course pages and index pages
 pub async fn generate_course_pages(
     plans: &[Plan],
+    shared_categories: &[SharedCategory],
+    no_course_info_repo_ids: &HashSet<String>,
+    grades_summary: &HashMap<String, HashMap<String, Vec<GradeDetail>>>,
     repos_dir: &Path,
     docs_dir: &Path,
     repos_set: &HashSet<String>,
@@ -181,22 +220,6 @@ pub async fn generate_course_pages(
             })
             .collect();
 
-        // Write major metadata
-        let pages: Vec<String> = std::iter::once("...".to_string())
-            .chain(ordered_semester_folders.iter().cloned())
-            .collect();
-
-        let major_meta = serde_json::json!({
-            "title": plan.major_name,
-            "root": true,
-            "defaultOpen": true,
-            "pages": pages,
-        });
-        fs::write(
-            major_dir.join("meta.json"),
-            serde_json::to_string_pretty(&major_meta)?,
-        )?;
-
         // Generate semester index pages
         for folder in &ordered_semester_folders {
             let courses = courses_by_semester.get(folder).cloned().unwrap_or_default();
@@ -222,6 +245,99 @@ pub async fn generate_course_pages(
             fs::write(sem_dir.join("index.mdx"), cards.join("\n"))?;
         }
 
+        // Shared categories
+        let mut category_pages: Vec<String> = Vec::new();
+        for cat in shared_categories {
+            let cat_dir = major_dir.join(&cat.id);
+            fs::create_dir_all(&cat_dir)?;
+
+            let mut category_courses: Vec<(String, String)> = Vec::new();
+
+            for repo_id in &cat.repo_ids {
+                if !repos_set.is_empty() && !repos_set.contains(repo_id) {
+                    continue;
+                }
+
+                let mdx_path = repos_dir.join(format!("{}.mdx", repo_id));
+                let json_path = repos_dir.join(format!("{}.json", repo_id));
+
+                if !mdx_path.exists() {
+                    continue;
+                }
+
+                let readme_content = fs::read_to_string(&mdx_path)?;
+                let title = title_from_mdx(&readme_content, repo_id);
+                category_courses.push((repo_id.clone(), title.clone()));
+
+                let content_lines: Vec<&str> = readme_content.lines().skip(2).collect();
+                let content = content_lines.join("\n");
+
+                let filetree_content = if json_path.exists() {
+                    let json_content = fs::read_to_string(&json_path)?;
+                    let worktree: WorktreeData = serde_json::from_str(&json_content)?;
+                    let tree = build_file_tree(&worktree, repo_id);
+                    let jsx = tree_to_jsx(&tree, 1);
+                    format!(
+                        "\n\n## 资源下载\n\n<Files url=\"https://open.osa.moe/openauto/{}\">\n{}\n</Files>",
+                        repo_id, jsx
+                    )
+                } else {
+                    String::new()
+                };
+
+                let grade_details = grades_summary
+                    .get(repo_id)
+                    .and_then(|m| m.get("default"))
+                    .cloned();
+                let course = minimal_course(repo_id, &title, grade_details);
+                let frontmatter = build_frontmatter(&title, &course);
+                let use_course_info = !no_course_info_repo_ids.contains(repo_id);
+                let page_content = if use_course_info {
+                    format!("{}\n\n<CourseInfo />\n\n{}{}", frontmatter, content, filetree_content)
+                } else {
+                    format!("{}\n\n{}{}", frontmatter, content, filetree_content)
+                };
+                fs::write(cat_dir.join(format!("{}.mdx", repo_id)), &page_content)?;
+            }
+
+            if !category_courses.is_empty() {
+                category_pages.push(cat.id.clone());
+
+                let mut cards = vec![
+                    "---".to_string(),
+                    format!("title: {}", cat.title),
+                    "---".to_string(),
+                    "".to_string(),
+                    "<Cards>".to_string(),
+                ];
+                for (slug, name) in &category_courses {
+                    cards.push(format!(
+                        "  <Card title=\"{}\" href=\"/docs/{}/{}/{}/{}\" />",
+                        name, plan.year, plan.major_code, cat.id, slug
+                    ));
+                }
+                cards.push("</Cards>".to_string());
+                fs::write(cat_dir.join("index.mdx"), cards.join("\n"))?;
+            }
+        }
+
+        // Write major metadata
+        let pages: Vec<String> = std::iter::once("...".to_string())
+            .chain(ordered_semester_folders.iter().cloned())
+            .chain(category_pages.iter().cloned())
+            .collect();
+
+        let major_meta = serde_json::json!({
+            "title": plan.major_name,
+            "root": true,
+            "defaultOpen": true,
+            "pages": pages,
+        });
+        fs::write(
+            major_dir.join("meta.json"),
+            serde_json::to_string_pretty(&major_meta)?,
+        )?;
+
         // Generate major index page with semester cards
         let mut major_index = vec![
             "---".to_string(),
@@ -237,6 +353,14 @@ pub async fn generate_course_pages(
                 "  <Card title=\"{}\" href=\"/docs/{}/{}/{}\" />",
                 title, plan.year, plan.major_code, folder
             ));
+        }
+        for cat in shared_categories {
+            if category_pages.contains(&cat.id) {
+                major_index.push(format!(
+                    "  <Card title=\"{}\" href=\"/docs/{}/{}/{}\" />",
+                    cat.title, plan.year, plan.major_code, cat.id
+                ));
+            }
         }
         major_index.push("</Cards>".to_string());
 

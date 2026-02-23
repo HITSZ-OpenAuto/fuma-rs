@@ -104,6 +104,13 @@ async fn main() -> Result<()> {
     let plans = loader::load_all_plans(&data_dir)?;
     println!("Loaded {} training plans", plans.len());
 
+    let shared_categories_config = loader::load_shared_categories(&data_dir);
+    if !shared_categories_config.categories.is_empty() {
+        println!("Loaded {} shared categories", shared_categories_config.categories.len());
+    }
+
+    let grades_summary = loader::load_grades_summary(&data_dir);
+
     // Filter courses by repos_set (if repos_list.txt exists)
     let filtered_plans: Vec<_> = if repos_set.is_empty() {
         plans
@@ -128,7 +135,16 @@ async fn main() -> Result<()> {
     }
 
     println!("Generating course pages...");
-    generator::generate_course_pages(&filtered_plans, &repos_dir, &docs_dir, &repos_set).await?;
+    generator::generate_course_pages(
+        &filtered_plans,
+        &shared_categories_config.categories,
+        &shared_categories_config.no_course_info_repo_ids,
+        &grades_summary,
+        &repos_dir,
+        &docs_dir,
+        &repos_set,
+    )
+    .await?;
     println!("Course pages generated successfully");
 
     // Format MDX files
