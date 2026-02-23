@@ -10,6 +10,7 @@ mod formatter;
 mod generator;
 mod loader;
 mod models;
+mod special_categories;
 mod tree;
 
 use error::Result;
@@ -23,8 +24,9 @@ use std::{env, fs};
 /// 2. Loads all training plans from TOML files (avoiding N+1 queries)
 /// 3. Filters courses based on repos_list.txt
 /// 4. Generates course pages with YAML frontmatter
-/// 5. Builds file trees from worktree.json data
-/// 6. Formats MDX files for Fumadocs compatibility
+/// 5. Generates special category pages (cross-specialty, general-knowledge)
+/// 6. Builds file trees from worktree.json data
+/// 7. Formats MDX files for Fumadocs compatibility
 #[tokio::main]
 async fn main() -> Result<()> {
     // Check for --fetch flag
@@ -128,8 +130,16 @@ async fn main() -> Result<()> {
     }
 
     println!("Generating course pages...");
-    generator::generate_course_pages(&filtered_plans, &repos_dir, &docs_dir, &repos_set).await?;
+    generator::generate_course_pages(&filtered_plans, &repos_dir, &docs_dir, &repos_set
+    ).await?;
     println!("Course pages generated successfully");
+
+    // Generate special category pages (cross-specialty, general-knowledge)
+    println!("Generating special category pages...");
+    special_categories::generate_special_category_pages(
+        &repos_dir, &docs_dir, &repos_set
+    ).await?;
+    println!("Special category pages generated successfully");
 
     // Format MDX files
     println!("Formatting MDX files...");
