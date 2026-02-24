@@ -367,8 +367,10 @@ pub async fn generate_course_pages(
         fs::write(major_dir.join("index.mdx"), major_index.join("\n"))?;
     }
 
-    // Generate year index pages
-    for year in &years {
+    // Generate year index pages in sorted order
+    let mut year_list: Vec<String> = years.into_iter().collect();
+    year_list.sort();
+    for year in &year_list {
         let year_dir = docs_dir.join(year);
         let year_meta = serde_json::json!({"title": year});
         fs::write(

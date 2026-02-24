@@ -206,6 +206,9 @@ pub fn load_all_plans(data_dir: &Path) -> Result<Vec<Plan>> {
         });
     }
 
+    // Sort plans by year and major_code for deterministic processing
+    plans.sort_by(|a, b| a.year.cmp(&b.year).then(a.major_code.cmp(&b.major_code)));
+
     Ok(plans)
 }
 
