@@ -105,7 +105,7 @@ pub struct Frontmatter {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CourseMetadata {
-    pub credit: u32,
+    pub credit: f64,
     pub assessment_method: String,
     pub course_nature: String,
     pub hour_distribution: HourDistributionMeta,

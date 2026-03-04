@@ -11,7 +11,7 @@ use std::path::Path;
 
 /// Build YAML frontmatter for a course page using serde_yaml
 fn build_frontmatter(title: &str, course: &Course) -> String {
-    let credit = course.credit.map(|c| c as u32).unwrap_or(0);
+    let credit = course.credit.unwrap_or(0.0);
     let assessment_method = course
         .assessment_method
         .as_deref()
