@@ -26,7 +26,7 @@ struct TomlSharedCategory {
     repo_ids: Vec<String>,
 }
 
-/// Grades summary data structure mapping course codes to grade details per plan variant
+/// Grades summary data structure mapping repository IDs to grade details per plan variant
 pub type GradesSummary = HashMap<String, HashMap<String, Vec<GradeDetail>>>;
 /// Lookup table mapping course code to repo ID with optional plan-specific overrides
 type LookupTable = HashMap<String, HashMap<String, String>>;
@@ -94,12 +94,12 @@ fn resolve_repo_id(lookup_table: &LookupTable, course_code: &str, plan_id: &str)
 /// Returns None if no matching grade details are found.
 fn select_grade_details(
     grades_summary: &GradesSummary,
-    course_code: &str,
+    repo_id: &str,
     year: &str,
     major_code: &str,
     major_name: &str,
 ) -> Option<Vec<GradeDetail>> {
-    let entry = grades_summary.get(course_code)?;
+    let entry = grades_summary.get(repo_id)?;
 
     // Try year_major keys (both code and name)
     let year_major_keys = vec![
@@ -172,18 +172,20 @@ pub fn load_all_plans(data_dir: &Path) -> Result<Vec<Plan>> {
             .courses
             .into_iter()
             .map(|c| {
-                // Select grade details if not already in TOML
+                let repo_id =
+                    resolve_repo_id(&lookup_table, &c.course_code, &toml_plan.info.plan_id);
+
+                // Select grade details if not already in TOML.
+                // NOTE: We look up grades_summary by repository ID, not by course_code.
                 let grade_details = c.grade_details.or_else(|| {
                     select_grade_details(
                         &grades_summary,
-                        &c.course_code,
+                        &repo_id,
                         &toml_plan.info.year,
                         &toml_plan.info.major_code,
                         &toml_plan.info.major_name,
                     )
                 });
-                let repo_id =
-                    resolve_repo_id(&lookup_table, &c.course_code, &toml_plan.info.plan_id);
 
                 Course {
                     repo_id,
