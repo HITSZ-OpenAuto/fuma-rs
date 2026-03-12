@@ -1,6 +1,6 @@
 use regex::Regex;
-use std::fs;
 use std::path::Path;
+use tokio::fs;
 use walkdir::WalkDir;
 
 /// Format a single MDX file with all transformations
@@ -378,22 +378,35 @@ fn wrap_accordions_in_container(content: &str) -> String {
 }
 
 /// Format all MDX files in a directory recursively
-pub fn format_all_mdx_files(docs_dir: &Path) -> crate::error::Result<usize> {
-    let mut modified_count = 0;
+pub async fn format_all_mdx_files(docs_dir: &Path) -> crate::error::Result<usize> {
+    let mut tasks = Vec::new();
 
     for entry in WalkDir::new(docs_dir)
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| e.path().extension().is_some_and(|ext| ext == "mdx"))
     {
-        let path = entry.path();
-        let original = fs::read_to_string(path)?;
-        let formatted = format_mdx_file(&original);
+        let path = entry.path().to_path_buf();
 
-        if formatted != original {
-            fs::write(path, formatted)?;
-            modified_count += 1;
-        }
+        let task = tokio::spawn(async move {
+            let original = fs::read_to_string(&path).await?;
+            let formatted = format_mdx_file(&original);
+
+            if formatted != original {
+                fs::write(&path, formatted).await?;
+                Ok::<usize, std::io::Error>(1)
+            } else {
+                Ok::<usize, std::io::Error>(0)
+            }
+        });
+
+        tasks.push(task);
+    }
+
+    let mut modified_count = 0;
+    for task in tasks {
+        let res = task.await.unwrap()?; // unwrap JoinError, then ? for io::Error
+        modified_count += res;
     }
 
     Ok(modified_count)
@@ -738,5 +751,25 @@ Final $a$ inline."#;
         assert!(output.contains("# This has $$math$$ in code"));
         assert!(output.contains("x = $5"));
         assert!(output.contains(r#"let formula = "$$E=mc^2$$";"#));
+    }
+
+    #[tokio::test]
+    async fn test_format_mdx_file_integration_async() {
+        let input = r#"<!-- comment -->
+# Title
+![badge](https://img.shields.io/test)
+<br>
+<div style="text-align:center;">Content</div>
+Math: $x = {1}$
+{{% details title="Test" %}}Answer{{% /details %}}"#;
+
+        let output = format_mdx_file(input);
+
+        // Check all transformations applied
+        assert!(!output.contains("<!--"));
+        assert!(!output.contains("shields.io"));
+        assert!(output.contains("<br />"));
+        assert!(output.contains("textAlign"));
+        assert!(output.contains("<Accordion"));
     }
 }

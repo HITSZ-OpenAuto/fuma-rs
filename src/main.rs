@@ -106,7 +106,10 @@ async fn main() -> Result<()> {
 
     let shared_categories_config = loader::load_shared_categories(&data_dir);
     if !shared_categories_config.categories.is_empty() {
-        println!("Loaded {} shared categories", shared_categories_config.categories.len());
+        println!(
+            "Loaded {} shared categories",
+            shared_categories_config.categories.len()
+        );
     }
 
     let grades_summary = loader::load_grades_summary(&data_dir);
@@ -149,7 +152,7 @@ async fn main() -> Result<()> {
 
     // Format MDX files
     println!("Formatting MDX files...");
-    let modified_count = formatter::format_all_mdx_files(&docs_dir)?;
+    let modified_count = formatter::format_all_mdx_files(&docs_dir).await?;
     println!("Formatted {} MDX files", modified_count);
 
     println!("\n✓ Done! All pages generated and formatted.");
