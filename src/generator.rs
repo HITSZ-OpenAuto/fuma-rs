@@ -293,7 +293,10 @@ pub async fn generate_course_pages(
                 let frontmatter = build_frontmatter(&title, &course);
                 let use_course_info = !no_course_info_repo_ids.contains(repo_id);
                 let page_content = if use_course_info {
-                    format!("{}\n\n<CourseInfo />\n\n{}{}", frontmatter, content, filetree_content)
+                    format!(
+                        "{}\n\n<CourseInfo />\n\n{}{}",
+                        frontmatter, content, filetree_content
+                    )
                 } else {
                     format!("{}\n\n{}{}", frontmatter, content, filetree_content)
                 };

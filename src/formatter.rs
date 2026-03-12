@@ -1,4 +1,5 @@
 use regex::Regex;
+use std::borrow::Cow;
 use std::fs;
 use std::path::Path;
 use walkdir::WalkDir;
@@ -49,32 +50,40 @@ fn remove_shield_badges(content: &str) -> String {
 
 /// Convert HTML tags to self-closing format for MDX compatibility
 fn fix_self_closing_tags(content: &str) -> String {
-    let mut result = content.to_string();
+    let mut result: Cow<str> = Cow::Borrowed(content);
 
     // Convert <br> to <br />
     let re_br = Regex::new(r"<br\s*>").unwrap();
-    result = re_br.replace_all(&result, "<br />").to_string();
+    if let Cow::Owned(s) = re_br.replace_all(&result, "<br />") {
+        result = Cow::Owned(s);
+    }
 
     // Convert <hr> to <hr />
     let re_hr = Regex::new(r"<hr\s*>").unwrap();
-    result = re_hr.replace_all(&result, "<hr />").to_string();
+    if let Cow::Owned(s) = re_hr.replace_all(&result, "<hr />") {
+        result = Cow::Owned(s);
+    }
 
-    result
+    result.into_owned()
 }
 
 /// Fix common malformed HTML patterns
 fn fix_malformed_html(content: &str) -> String {
-    let mut result = content.to_string();
+    let mut result: Cow<str> = Cow::Borrowed(content);
 
     // Remove empty <tr> tags before closing table
     let re_tr_table = Regex::new(r"<tr>\s*</table>").unwrap();
-    result = re_tr_table.replace_all(&result, "</table>").to_string();
+    if let Cow::Owned(s) = re_tr_table.replace_all(&result, "</table>") {
+        result = Cow::Owned(s);
+    }
 
     // Remove empty <tr></tr> tags
     let re_empty_tr = Regex::new(r"<tr>\s*</tr>").unwrap();
-    result = re_empty_tr.replace_all(&result, "").to_string();
+    if let Cow::Owned(s) = re_empty_tr.replace_all(&result, "") {
+        result = Cow::Owned(s);
+    }
 
-    result
+    result.into_owned()
 }
 
 /// Convert CSS property name to camelCase for JSX
@@ -130,53 +139,60 @@ fn convert_style_to_jsx(content: &str) -> String {
 
 /// Remove Hugo callout shortcodes that are invalid in MDX.
 fn convert_hugo_callout_shortcodes(content: &str) -> String {
-    let mut result = content.to_string();
+    let mut result: Cow<str> = Cow::Borrowed(content);
 
     // Remove opening callout tags such as:
     // {{< callout type="info" >}} or {{% callout type="warning" %}}
     let re_open = Regex::new(r"\{\{[<%]\s*callout\b[^{}]*[>%]\}\}").unwrap();
-    result = re_open.replace_all(&result, "").to_string();
+    if let Cow::Owned(s) = re_open.replace_all(&result, "") {
+        result = Cow::Owned(s);
+    }
 
     // Remove closing callout tags such as:
     // {{< /callout >}} or {{% /callout %}}
     let re_close = Regex::new(r"\{\{[<%]\s*/callout\s*[>%]\}\}").unwrap();
-    result = re_close.replace_all(&result, "").to_string();
+    if let Cow::Owned(s) = re_close.replace_all(&result, "") {
+        result = Cow::Owned(s);
+    }
 
-    result
+    result.into_owned()
 }
 
 /// Convert Hugo details shortcode to Fumadocs Accordion components
 fn convert_hugo_details_to_accordion(content: &str) -> String {
-    let mut result = content.to_string();
+    let mut result: Cow<str> = Cow::Borrowed(content);
 
     // First, handle single-line shortcodes: {{% details title="..." %}} content {{% /details %}}
     let re_single_line =
         Regex::new(r#"\{\{% details title="([^"]*)"[^%]*%\}\}\s*(.+?)\s*\{\{% /details %\}\}"#)
             .unwrap();
-    result = re_single_line
-        .replace_all(&result, "<Accordion title=\"$1\">\n$2\n</Accordion>")
-        .to_string();
+    if let Cow::Owned(s) =
+        re_single_line.replace_all(&result, "<Accordion title=\"$1\">\n$2\n</Accordion>")
+    {
+        result = Cow::Owned(s);
+    }
 
     // Convert opening tags
     let re_open = Regex::new(r#"\{\{% details title="([^"]*)"[^%]*%\}\}"#).unwrap();
-    result = re_open
-        .replace_all(&result, r#"<Accordion title="$1">"#)
-        .to_string();
+    if let Cow::Owned(s) = re_open.replace_all(&result, r#"<Accordion title="$1">"#) {
+        result = Cow::Owned(s);
+    }
 
     // Convert closing tags - ensure they're on their own line for MDX compatibility
     // Replace any occurrence where {{% /details %}} appears at end of line content
     let re_closing = Regex::new(r#"([^\n])\s*\{\{% /details %\}\}"#).unwrap();
-    result = re_closing
-        .replace_all(&result, "$1\n</Accordion>")
-        .to_string();
+    if let Cow::Owned(s) = re_closing.replace_all(&result, "$1\n</Accordion>") {
+        result = Cow::Owned(s);
+    }
 
+    let mut result_owned = result.into_owned();
     // Handle any remaining standalone closing tags
-    result = result.replace("{{% /details %}}", "</Accordion>");
+    result_owned = result_owned.replace("{{% /details %}}", "</Accordion>");
 
     // Wrap consecutive Accordion blocks in Accordions
-    result = wrap_accordions_in_container(&result);
+    result_owned = wrap_accordions_in_container(&result_owned);
 
-    result
+    result_owned
 }
 
 /// Convert block-level math delimiters $$ $$ to ```math code blocks
