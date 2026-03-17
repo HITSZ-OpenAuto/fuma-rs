@@ -10,6 +10,18 @@ cargo build --release
 
 构建后的二进制文件位于 `target/release/hoa-backend`
 
+## 发布（Release）注意事项
+
+- GitHub Actions 的 `release` 只会在 **推送 tag** 时触发：`.github/workflows/build.yaml` 中有条件 `startsWith(github.ref, 'refs/tags/')`。
+- 推荐发布流程（确保 tag 指向包含版本号更新的 commit）：
+   1. 修改 `Cargo.toml` 的 `version`（如有生成/变更也一并更新 `Cargo.lock`）。
+   2. 提交变更：`git add Cargo.toml Cargo.lock` → `git commit -m "chore: bump version to 1.15.1"`。
+   3. 创建 **annotated tag**（使用 `v` 前缀，格式为 `v<大版本>.<小版本>.<修订版本>`，和 GitHub Release 命名规范一致）：`git tag -a v1.15.1 -m "v1.15.1"`。
+   4. 推送到远端以触发流水线：`git push` 后再 `git push origin v1.15.1`（或使用 `git push --follow-tags`）。
+- Release 显示为 **Draft** 是预期行为：工作流里配置了 `draft: true`，需要到 GitHub 的 Releases 页面手动点 **Publish release**；如需自动发布，把 `draft` 改为 `false` 或删除该行。
+- 若 `build` job 失败，`release` 不会执行（`needs: [build]`）。
+- `release` 步骤开启了 `fail_on_unmatched_files: true`：如果上传的 artifacts 名称/路径与配置不一致（例如 `hoa-backend-linux.tar.gz/hoa-backend-linux.tar.gz`），发布会直接失败。
+
 
 ## 工作流程
 
