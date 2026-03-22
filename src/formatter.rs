@@ -1,7 +1,31 @@
 use regex::Regex;
 use std::fs;
 use std::path::Path;
+use std::sync::LazyLock;
 use walkdir::WalkDir;
+
+static RE_BLANK_LINES: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\n{3,}").unwrap());
+static RE_HTML_COMMENT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<!--[\s\S]*?-->").unwrap());
+static RE_BARE_URL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<(https?://[^>]+)>").unwrap());
+static RE_BR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<br\s*>").unwrap());
+static RE_HR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<hr\s*>").unwrap());
+static RE_TR_TABLE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<tr>\s*</table>").unwrap());
+static RE_EMPTY_TR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<tr>\s*</tr>").unwrap());
+static RE_STYLE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"style="([^"]*)""#).unwrap());
+static RE_HUGO_CALLOUT_OPEN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\{\{[<%]\s*callout\b[^{}]*[>%]\}\}").unwrap());
+static RE_HUGO_CALLOUT_CLOSE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\{\{[<%]\s*/callout\s*[>%]\}\}").unwrap());
+static RE_HUGO_DETAILS_SINGLE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"\{\{% details title="([^"]*)"[^%]*%\}\}\s*(.+?)\s*\{\{% /details %\}\}"#).unwrap()
+});
+static RE_HUGO_DETAILS_OPEN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"\{\{% details title="([^"]*)"[^%]*%\}\}"#).unwrap());
+static RE_HUGO_DETAILS_CLOSE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"([^\n])\s*\{\{% /details %\}\}"#).unwrap());
+static RE_CODE_BLOCK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"```[\s\S]*?```").unwrap());
+static RE_MATH_BLOCK: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\$\$(\r?\n)?([\s\S]*?)(\r?\n)?\$\$").unwrap());
 
 /// Format a single MDX file with all transformations
 pub fn format_mdx_file(content: &str) -> String {
@@ -20,22 +44,19 @@ pub fn format_mdx_file(content: &str) -> String {
     result = convert_inline_math(&result);
 
     // Clean up multiple consecutive blank lines
-    let re = Regex::new(r"\n{3,}").unwrap();
-    result = re.replace_all(&result, "\n\n").to_string();
+    result = RE_BLANK_LINES.replace_all(&result, "\n\n").to_string();
 
     result
 }
 
 /// Remove HTML comments from content
 fn remove_html_comments(content: &str) -> String {
-    let re = Regex::new(r"<!--[\s\S]*?-->").unwrap();
-    re.replace_all(content, "").to_string()
+    RE_HTML_COMMENT.replace_all(content, "").to_string()
 }
 
 /// Convert bare URLs in angle brackets to Markdown links for MDX compatibility
 fn convert_bare_urls_to_links(content: &str) -> String {
-    let re = Regex::new(r"<(https?://[^>]+)>").unwrap();
-    re.replace_all(content, "[$1]($1)").to_string()
+    RE_BARE_URL.replace_all(content, "[$1]($1)").to_string()
 }
 
 /// Remove shield.io badges (markdown image syntax)
@@ -52,12 +73,10 @@ fn fix_self_closing_tags(content: &str) -> String {
     let mut result = content.to_string();
 
     // Convert <br> to <br />
-    let re_br = Regex::new(r"<br\s*>").unwrap();
-    result = re_br.replace_all(&result, "<br />").to_string();
+    result = RE_BR.replace_all(&result, "<br />").to_string();
 
     // Convert <hr> to <hr />
-    let re_hr = Regex::new(r"<hr\s*>").unwrap();
-    result = re_hr.replace_all(&result, "<hr />").to_string();
+    result = RE_HR.replace_all(&result, "<hr />").to_string();
 
     result
 }
@@ -67,12 +86,10 @@ fn fix_malformed_html(content: &str) -> String {
     let mut result = content.to_string();
 
     // Remove empty <tr> tags before closing table
-    let re_tr_table = Regex::new(r"<tr>\s*</table>").unwrap();
-    result = re_tr_table.replace_all(&result, "</table>").to_string();
+    result = RE_TR_TABLE.replace_all(&result, "</table>").to_string();
 
     // Remove empty <tr></tr> tags
-    let re_empty_tr = Regex::new(r"<tr>\s*</tr>").unwrap();
-    result = re_empty_tr.replace_all(&result, "").to_string();
+    result = RE_EMPTY_TR.replace_all(&result, "").to_string();
 
     result
 }
@@ -99,33 +116,32 @@ fn css_property_to_camel_case(prop: &str) -> String {
 
 /// Convert HTML style attributes to JSX format
 fn convert_style_to_jsx(content: &str) -> String {
-    let re = Regex::new(r#"style="([^"]*)""#).unwrap();
+    RE_STYLE
+        .replace_all(content, |caps: &regex::Captures| {
+            let style_str = &caps[1];
+            let mut jsx_props = Vec::new();
 
-    re.replace_all(content, |caps: &regex::Captures| {
-        let style_str = &caps[1];
-        let mut jsx_props = Vec::new();
+            for prop in style_str.split(';') {
+                let prop = prop.trim();
+                if prop.is_empty() || !prop.contains(':') {
+                    continue;
+                }
 
-        for prop in style_str.split(';') {
-            let prop = prop.trim();
-            if prop.is_empty() || !prop.contains(':') {
-                continue;
+                let parts: Vec<&str> = prop.splitn(2, ':').collect();
+                if parts.len() == 2 {
+                    let name = css_property_to_camel_case(parts[0].trim());
+                    let value = parts[1].trim();
+                    jsx_props.push(format!("{}: \"{}\"", name, value));
+                }
             }
 
-            let parts: Vec<&str> = prop.splitn(2, ':').collect();
-            if parts.len() == 2 {
-                let name = css_property_to_camel_case(parts[0].trim());
-                let value = parts[1].trim();
-                jsx_props.push(format!("{}: \"{}\"", name, value));
+            if jsx_props.is_empty() {
+                String::new()
+            } else {
+                format!("style={{{{{}}}}}", jsx_props.join(", "))
             }
-        }
-
-        if jsx_props.is_empty() {
-            String::new()
-        } else {
-            format!("style={{{{{}}}}}", jsx_props.join(", "))
-        }
-    })
-    .to_string()
+        })
+        .to_string()
 }
 
 /// Remove Hugo callout shortcodes that are invalid in MDX.
@@ -134,13 +150,11 @@ fn convert_hugo_callout_shortcodes(content: &str) -> String {
 
     // Remove opening callout tags such as:
     // {{< callout type="info" >}} or {{% callout type="warning" %}}
-    let re_open = Regex::new(r"\{\{[<%]\s*callout\b[^{}]*[>%]\}\}").unwrap();
-    result = re_open.replace_all(&result, "").to_string();
+    result = RE_HUGO_CALLOUT_OPEN.replace_all(&result, "").to_string();
 
     // Remove closing callout tags such as:
     // {{< /callout >}} or {{% /callout %}}
-    let re_close = Regex::new(r"\{\{[<%]\s*/callout\s*[>%]\}\}").unwrap();
-    result = re_close.replace_all(&result, "").to_string();
+    result = RE_HUGO_CALLOUT_CLOSE.replace_all(&result, "").to_string();
 
     result
 }
@@ -150,23 +164,18 @@ fn convert_hugo_details_to_accordion(content: &str) -> String {
     let mut result = content.to_string();
 
     // First, handle single-line shortcodes: {{% details title="..." %}} content {{% /details %}}
-    let re_single_line =
-        Regex::new(r#"\{\{% details title="([^"]*)"[^%]*%\}\}\s*(.+?)\s*\{\{% /details %\}\}"#)
-            .unwrap();
-    result = re_single_line
+    result = RE_HUGO_DETAILS_SINGLE
         .replace_all(&result, "<Accordion title=\"$1\">\n$2\n</Accordion>")
         .to_string();
 
     // Convert opening tags
-    let re_open = Regex::new(r#"\{\{% details title="([^"]*)"[^%]*%\}\}"#).unwrap();
-    result = re_open
+    result = RE_HUGO_DETAILS_OPEN
         .replace_all(&result, r#"<Accordion title="$1">"#)
         .to_string();
 
     // Convert closing tags - ensure they're on their own line for MDX compatibility
     // Replace any occurrence where {{% /details %}} appears at end of line content
-    let re_closing = Regex::new(r#"([^\n])\s*\{\{% /details %\}\}"#).unwrap();
-    result = re_closing
+    result = RE_HUGO_DETAILS_CLOSE
         .replace_all(&result, "$1\n</Accordion>")
         .to_string();
 
@@ -183,12 +192,11 @@ fn convert_hugo_details_to_accordion(content: &str) -> String {
 /// Preserves whether there's a newline after the opening $$
 fn convert_math_blocks(content: &str) -> String {
     // First, extract and protect code blocks
-    let code_block_re = Regex::new(r"```[\s\S]*?```").unwrap();
     let mut code_blocks = Vec::new();
     let mut protected_content = content.to_string();
 
     // Replace code blocks with placeholders
-    for (i, mat) in code_block_re.find_iter(content).enumerate() {
+    for (i, mat) in RE_CODE_BLOCK.find_iter(content).enumerate() {
         code_blocks.push(mat.as_str().to_string());
         let placeholder = format!("___CODE_BLOCK_PLACEHOLDER_{}___", i);
         protected_content = protected_content.replacen(mat.as_str(), &placeholder, 1);
@@ -196,9 +204,7 @@ fn convert_math_blocks(content: &str) -> String {
 
     // Match $$ ... $$ (both inline and block forms) only outside code blocks
     // This regex captures: opening $$, optional newline, content, optional newline, closing $$
-    let re = Regex::new(r"\$\$(\r?\n)?([\s\S]*?)(\r?\n)?\$\$").unwrap();
-
-    let result = re
+    let result = RE_MATH_BLOCK
         .replace_all(&protected_content, |caps: &regex::Captures| {
             let has_opening_newline = caps.get(1).is_some();
             let math_content = &caps[2];
@@ -229,12 +235,11 @@ fn convert_math_blocks(content: &str) -> String {
 /// Only converts single dollar signs, not double dollar signs
 fn convert_inline_math(content: &str) -> String {
     // First, extract and protect code blocks
-    let code_block_re = Regex::new(r"```[\s\S]*?```").unwrap();
     let mut code_blocks = Vec::new();
     let mut protected_content = content.to_string();
 
     // Replace code blocks with placeholders
-    for (i, mat) in code_block_re.find_iter(content).enumerate() {
+    for (i, mat) in RE_CODE_BLOCK.find_iter(content).enumerate() {
         code_blocks.push(mat.as_str().to_string());
         let placeholder = format!("___CODE_BLOCK_PLACEHOLDER_{}___", i);
         protected_content = protected_content.replacen(mat.as_str(), &placeholder, 1);
